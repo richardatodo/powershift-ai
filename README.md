@@ -9,13 +9,14 @@ code is authoritative for arithmetic.
 
 M1 established the repository/environment baseline. M2 defined and reviewed the
 domain/API contracts. M3 implements the standalone Python calculation engine and
-its tests. The frontend, HTTP service, database, authentication, AI adapter, and
-report/export UI are not implemented yet.
+its tests. M4 adds the PostgreSQL schema, transactional migrations, ownership
+constraints and persistence tests. The frontend, HTTP service, authentication,
+production database adapter, AI adapter and report/export UI are not implemented
+yet.
 
 The engine has no third-party dependencies. Its public interfaces live in
 [`backend/calculations`](backend/calculations/__init__.py).
-Use Python 3.12 or newer; the milestone report records the interpreter actually
-used for verification.
+Use Python 3.12 or newer.
 
 ## Run the tests
 
@@ -28,6 +29,12 @@ py -3 -B -m unittest discover -s tests -v
 `-B` prevents Python bytecode/cache files from being created. No package install,
 API key, database, or running web service is needed. A restricted execution
 environment may require permission to run the installed Python interpreter.
+
+Database setup, schema constraints and access patterns are described in
+[`backend/persistence`](backend/persistence/README.md). See
+[`tools/db`](tools/db/README.md) for the migration runner and isolated PostgreSQL
+test commands. The database tests use Node's built-in test runner and a separate
+test runtime; the Python calculation engine remains dependency-free.
 
 ## Calculate an estimate
 
@@ -107,16 +114,7 @@ rating defaults or additional electrical recommendations.
 `CalculationError` exposes stable `code` and field `details`. Its
 `as_dict(server_request_id)` method produces the reviewed error envelope without
 rejected input values. Strict JSON rejects duplicate properties, NaN/Infinity,
-malformed documents, and implicit numeric strings. HTTP mapping, authentication,
-ownership enforcement, and request limits belong to the future service layer.
-
-## Engineering documents
-
-- [Project references](docs/reference/README.md)
-- [M1 repository/environment audit](docs/milestones/m1-repository-environment-audit.md)
-- [M2 contracts](docs/contracts/README.md)
-- [M3 engineering report](docs/milestones/m3-deterministic-calculation-engine.md)
-
-The current `.gitignore` excludes `docs` and `AGENTS.md`. Those files exist
-locally but are excluded from normal staging; their tracking policy has been
-preserved. Source and tests introduced in M3 are not ignored.
+malformed documents, and implicit numeric strings. Database row-level security
+and ownership constraints are defined in M4. HTTP mapping, authentication,
+verified database request context and request limits belong to the future
+service layer.
