@@ -3,8 +3,9 @@
 M4 defines the database schema, migrations, ownership controls and service access
 patterns. It targets PostgreSQL 17 or newer. Migrations and integration tests
 passed on native PostgreSQL 17.11 in a disposable Docker container and PostgreSQL
-18.6 compiled to WASM in PGlite. A persistent application database, production
-driver, HTTP handlers and authentication are not configured yet.
+18.6 compiled to WASM in PGlite. M5 adds the [FastAPI service](../api/README.md),
+its runtime PostgreSQL pool and JWT authentication. No persistent hosted database
+or live managed identity account has been provisioned.
 
 The SQL assets live directly under `backend/persistence/`. The calculation
 engine remains in `backend/calculations/` and is authoritative for arithmetic.
@@ -88,15 +89,16 @@ transaction-local so a pool cannot carry them into the next transaction.
 
 Migrations deliberately do not create a login, password, role membership or
 authentication provider. The operator must provision a separate restricted
-backend login with permission to SET ROLE to `powershift_app`. Identity mapping
-and user provisioning require a separately restricted authentication path; the
-application role cannot enumerate/provision arbitrary users. These integrations
-remain future work, not deployed controls.
+backend login with permission to SET ROLE to `powershift_app`. M5's restricted
+identity-resolution helper maps verified issuer/subject to local users. Direct
+user-table writes and unrestricted enumeration remain unavailable to the app.
+Live identity-provider onboarding remains deployment configuration work.
 
 ## Migrations and validation
 
 `0001_initial` creates nine tables, indexes, RLS, privileges and integrity
-triggers. `0002_report_integrity` validates saved input/output snapshots. The
+triggers. `0002_report_integrity` validates saved input/output snapshots.
+`0003_identity_resolution` adds trusted verified-principal mapping. The
 [migration runner](../../tools/db/README.md) applies checksummed, ordered files
 and their journal in one transaction with an advisory lock. It expects a
 dedicated idle privileged connection and SQL without transaction control.
@@ -107,8 +109,8 @@ adopting an unknown role. Use an isolated development cluster for this bootstrap
 Adapting provisioning for a managed host or multiple installations on one
 cluster requires an explicit follow-up migration/deployment design.
 
-Down migration 0002 removes report guards. Down 0001 drops the entire domain
-schema and application role. Both are destructive development recovery tools,
+Down 0003 removes identity resolution, down 0002 removes report guards, and down
+0001 drops the domain schema and application role. These are recovery tools,
 not a production rollback plan. Backups, retention and restore exercises must be
 designed before deployment. The separate migration journal is retained.
 
@@ -117,13 +119,14 @@ Run the PostgreSQL test suites using the commands in
 The native PostgreSQL 17.11 run passed 73 tests, including four two-session cases
 for migration serialization, scan consumption, version conflicts and duplicate
 creation keys. The PostgreSQL 18.6 WASM run passed 69 shared tests; PGlite provides
-only one connection. Production pooling, authentication integration, backups and
-deployment configuration remain unverified.
+only one connection. M5 tests runtime pooling and JWT/HTTP ownership integration
+on native PostgreSQL; live identity onboarding, backups and deployment
+configuration remain unverified.
 
 ## Service integration and retention
 
-Use the [parameterized access patterns](access-patterns.md) when implementing the
-HTTP service. There is no ORM/repository adapter or live endpoint in M4.
+The [parameterized access patterns](access-patterns.md) are implemented by the
+M5 service in `backend/api/`; M4 itself introduced the SQL boundary.
 Owner/profile indexes support scoped reads and cursor pagination; partial indexes
 support pending scan expiry and optional resource relationships. Their existence
 does not establish production performance results.

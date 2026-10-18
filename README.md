@@ -10,9 +10,10 @@ code is authoritative for arithmetic.
 M1 established the repository/environment baseline. M2 defined and reviewed the
 domain/API contracts. M3 implements the standalone Python calculation engine and
 its tests. M4 adds the PostgreSQL schema, transactional migrations, ownership
-constraints and persistence tests. The frontend, HTTP service, authentication,
-production database adapter, AI adapter and report/export UI are not implemented
-yet.
+constraints and persistence tests. M5 adds FastAPI, verified JWT authentication,
+owner-scoped PostgreSQL integration, report snapshots and CSV responses. The
+frontend, live managed sign-in configuration, AI provider and report/export UI
+are not implemented yet.
 
 The engine has no third-party dependencies. Its public interfaces live in
 [`backend/calculations`](backend/calculations/__init__.py).
@@ -35,6 +36,19 @@ Database setup, schema constraints and access patterns are described in
 [`tools/db`](tools/db/README.md) for the migration runner and isolated PostgreSQL
 test commands. The database tests use Node's built-in test runner and a separate
 test runtime; the Python calculation engine remains dependency-free.
+
+## Run the API
+
+See [`backend/api`](backend/api/README.md) for dependencies, migrations,
+restricted database login setup, managed-issuer configuration and automated
+HTTP/authentication tests. Once configured:
+
+```powershell
+.venv/Scripts/python.exe -m uvicorn backend.api.app:create_app --factory --host 127.0.0.1 --port 8000 --no-proxy-headers
+```
+
+Only `/api/status` is public. All other API operations require a verified RS256
+bearer access token for the configured API audience. Scanning remains disabled.
 
 ## Calculate an estimate
 
@@ -115,6 +129,5 @@ rating defaults or additional electrical recommendations.
 `as_dict(server_request_id)` method produces the reviewed error envelope without
 rejected input values. Strict JSON rejects duplicate properties, NaN/Infinity,
 malformed documents, and implicit numeric strings. Database row-level security
-and ownership constraints are defined in M4. HTTP mapping, authentication,
-verified database request context and request limits belong to the future
-service layer.
+and ownership constraints are defined in M4. M5 implements HTTP error mapping,
+verified authentication, database request context and bounded request handling.

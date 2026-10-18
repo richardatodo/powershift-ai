@@ -1,0 +1,3159 @@
+{
+  "openapi": "3.1.1",
+  "info": {
+    "title": "PowerShift AI API",
+    "version": "0.1.0",
+    "description": "M5 FastAPI service. RS256 JWT bearer authentication verifies a configured managed issuer, API audience, expiry and JWKS signature. PostgreSQL owner-scoped records and RLS protect private operations. Deterministic Python code is authoritative for arithmetic. Live scanning is disabled pending provider, consent, retention and budget decisions. No hosted deployment or live managed identity account is implied."
+  },
+  "jsonSchemaDialect": "https://spec.openapis.org/oas/3.1/dialect/base",
+  "servers": [
+    {
+      "url": "/",
+      "description": "Relative deployment-independent target API; no host or deployment is selected."
+    }
+  ],
+  "tags": [
+    {
+      "name": "Service"
+    },
+    {
+      "name": "Profiles"
+    },
+    {
+      "name": "Appliances"
+    },
+    {
+      "name": "Scans"
+    },
+    {
+      "name": "Calculations"
+    },
+    {
+      "name": "Reports"
+    }
+  ],
+  "x-contract-status": "M5 implemented API; live scan success remains disabled.",
+  "x-authentication-gate": "Verified RS256 bearer JWT from configured issuer/API audience required for all operations except GET /api/status. Managed vendor remains selectable by configuration.",
+  "x-image-retention-gate": "Do not enable live scanning until upload notice/consent, retention/deletion, provider data terms, receipt isolation and configured usage limits have been approved and verified. No raw-image storage or retention mechanism is selected.",
+  "paths": {
+    "/api/status": {
+      "get": {
+        "tags": [
+          "Service"
+        ],
+        "operationId": "getStatus",
+        "summary": "Describe scan configuration capability.",
+        "description": "Public target contract. imageScanningConfigured is a configuration flag, not proof of a live/verified provider or production readiness. No credentials, model name, keys, internal topology, or budget details are returned.",
+        "x-authentication-required": false,
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "headers": {
+              "X-Request-ID": {
+                "required": true,
+                "description": "Opaque request correlation ID; error bodies contain the same request_id. Must not encode sensitive input.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "Cache-Control": {
+                "required": true,
+                "description": "Personal/error responses must not be cached.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "X-Contract-Version": {
+                "required": true,
+                "description": "Version of this API contract, independent of the unversioned /api URL.",
+                "schema": {
+                  "type": "string",
+                  "const": "0.1.0"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "description": "Temporarily unavailable service or authentication key retrieval.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/DefaultError"
+          }
+        }
+      }
+    },
+    "/api/scan": {
+      "post": {
+        "tags": [
+          "Scans"
+        ],
+        "summary": "Extract unconfirmed visible label candidates.",
+        "description": "Validates principal/profile ownership, explicit upload consent, outer JSON media type, one decoded image, configured limits and provider readiness before extraction. Missing/invalid imageDataUrl, including schema type/pattern failure or corrupt decoded image, is 400 INVALID_IMAGE as an endpoint-specific exception to generic 422 validation; configured oversize remains 400 IMAGE_TOO_LARGE. Invalid non-image profile/consent fields are 422. consent.notice_version must match the active approved notice; an unknown version is 422 VALIDATION_ERROR with INVALID_PROVENANCE detail. Unconfigured notice, provider or required privacy/scanning prerequisites yield 503 SCANNER_UNAVAILABLE. Server-held provider secrets only. Candidate receipt/expiry define linkage semantics without choosing storage or retention. Live scans are blocked until consent wording, provider terms, retention/deletion, receipt isolation, timeouts, quotas and authentication are approved and verified. Never save/confirm an appliance. Preserve blueprint imageDataUrl, result, watts and requiresConfirmation keys; added profile_id/consent/scan receipt fields are M2 refinements.",
+        "x-authentication-required": true,
+        "x-authentication-status": "Mechanism and credential transport unresolved; private operation activation is blocked pending identity/authorization design and verification.",
+        "operationId": "scanLabel",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Unconfirmed, editable visible-evidence candidates only.",
+            "headers": {
+              "X-Request-ID": {
+                "required": true,
+                "description": "Opaque request correlation ID; error bodies contain the same request_id. Must not encode sensitive input.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "Cache-Control": {
+                "required": true,
+                "description": "Personal/error responses must not be cached.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "X-Contract-Version": {
+                "required": true,
+                "description": "Version of this API contract, independent of the unversioned /api URL.",
+                "schema": {
+                  "type": "string",
+                  "const": "0.1.0"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "413": {
+            "description": "JSON request exceeds the configured byte limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "502": {
+            "$ref": "#/components/responses/ScanProviderError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ScannerUnavailable"
+          },
+          "504": {
+            "$ref": "#/components/responses/ScanTimeout"
+          },
+          "default": {
+            "$ref": "#/components/responses/DefaultError"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/profiles": {
+      "post": {
+        "tags": [
+          "Profiles"
+        ],
+        "summary": "Create an owned profile.",
+        "description": "Owner is derived from the verified principal, never request data. Name-only appliance catalogue uses sector; no wattage defaults. Profile creation idempotency scope is principal + operation.",
+        "x-authentication-required": true,
+        "x-authentication-status": "Mechanism and credential transport unresolved; private operation activation is blocked pending identity/authorization design and verification.",
+        "operationId": "createProfile",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Existing profile returned for an identical client_request_id replay.",
+            "headers": {
+              "X-Request-ID": {
+                "required": true,
+                "description": "Opaque request correlation ID; error bodies contain the same request_id. Must not encode sensitive input.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "Cache-Control": {
+                "required": true,
+                "description": "Personal/error responses must not be cached.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "X-Contract-Version": {
+                "required": true,
+                "description": "Version of this API contract, independent of the unversioned /api URL.",
+                "schema": {
+                  "type": "string",
+                  "const": "0.1.0"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileRead"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created profile.",
+            "headers": {
+              "X-Request-ID": {
+                "required": true,
+                "description": "Opaque request correlation ID; error bodies contain the same request_id. Must not encode sensitive input.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "Cache-Control": {
+                "required": true,
+                "description": "Personal/error responses must not be cached.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "X-Contract-Version": {
+                "required": true,
+                "description": "Version of this API contract, independent of the unversioned /api URL.",
+                "schema": {
+                  "type": "string",
+                  "const": "0.1.0"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileRead"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "description": "JSON request exceeds the configured byte limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "description": "Temporarily unavailable service or authentication key retrieval.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/DefaultError"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/profiles/{profile_id}": {
+      "get": {
+        "tags": [
+          "Profiles"
+        ],
+        "summary": "Read an owned profile and its appliances.",
+        "description": "All reads are scoped to the verified owner. Missing and other-owner resource IDs use indistinguishable 404 responses. Derived appliance energy is recomputed by deterministic server code.",
+        "x-authentication-required": true,
+        "x-authentication-status": "Mechanism and credential transport unresolved; private operation activation is blocked pending identity/authorization design and verification.",
+        "operationId": "getProfile",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProfileId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "headers": {
+              "X-Request-ID": {
+                "required": true,
+                "description": "Opaque request correlation ID; error bodies contain the same request_id. Must not encode sensitive input.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "Cache-Control": {
+                "required": true,
+                "description": "Personal/error responses must not be cached.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "X-Contract-Version": {
+                "required": true,
+                "description": "Version of this API contract, independent of the unversioned /api URL.",
+                "schema": {
+                  "type": "string",
+                  "const": "0.1.0"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileWithAppliances"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "description": "Temporarily unavailable service or authentication key retrieval.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/DefaultError"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/profiles/{profile_id}/appliances": {
+      "post": {
+        "tags": [
+          "Appliances"
+        ],
+        "summary": "Create a customer-confirmed appliance.",
+        "description": "Requires explicit review of final submitted values. Confirmed incomplete appliances may be saved but are excluded from energy totals. AI receipts must be bound to the same principal/profile and may be consumed only once; same-body idempotent retries return the original successful resource while it exists. After appliance deletion the durable key remains: identical replay returns 404 RESOURCE_NOT_FOUND and never recreates it; changed-body replay remains 409 IDEMPOTENCY_CONFLICT. Server composes provenance from original scan candidates and final customer fields. No client-provided totals, owner IDs, source_status or timestamps. No raw image retention/storage mechanism is selected.",
+        "x-authentication-required": true,
+        "x-authentication-status": "Mechanism and credential transport unresolved; private operation activation is blocked pending identity/authorization design and verification.",
+        "operationId": "createAppliance",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProfileId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplianceCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Existing appliance returned for an identical client_request_id replay.",
+            "headers": {
+              "X-Request-ID": {
+                "required": true,
+                "description": "Opaque request correlation ID; error bodies contain the same request_id. Must not encode sensitive input.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "Cache-Control": {
+                "required": true,
+                "description": "Personal/error responses must not be cached.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "X-Contract-Version": {
+                "required": true,
+                "description": "Version of this API contract, independent of the unversioned /api URL.",
+                "schema": {
+                  "type": "string",
+                  "const": "0.1.0"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplianceRead"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created customer-confirmed estimated appliance.",
+            "headers": {
+              "X-Request-ID": {
+                "required": true,
+                "description": "Opaque request correlation ID; error bodies contain the same request_id. Must not encode sensitive input.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "Cache-Control": {
+                "required": true,
+                "description": "Personal/error responses must not be cached.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "X-Contract-Version": {
+                "required": true,
+                "description": "Version of this API contract, independent of the unversioned /api URL.",
+                "schema": {
+                  "type": "string",
+                  "const": "0.1.0"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplianceRead"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "description": "JSON request exceeds the configured byte limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "description": "Temporarily unavailable service or authentication key retrieval.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/DefaultError"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/appliances/{appliance_id}": {
+      "patch": {
+        "tags": [
+          "Appliances"
+        ],
+        "summary": "Edit and reconfirm an owned appliance.",
+        "description": "Validate version and ownership, merge allowed changes, require explicit confirmation of all resulting fields, and revalidate complete merged state atomically. Null clears a nullable input and may make the record incomplete. Recompute derived energy; preserve original evidence in server-composed provenance. AI linkage requirements apply to final source state. New AI source/candidate consumption must obey receipt/profile/principal isolation; existing same-receipt linkage may be preserved for later manual corrections of that appliance.",
+        "x-authentication-required": true,
+        "x-authentication-status": "Mechanism and credential transport unresolved; private operation activation is blocked pending identity/authorization design and verification.",
+        "operationId": "updateAppliance",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ApplianceId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppliancePatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "headers": {
+              "X-Request-ID": {
+                "required": true,
+                "description": "Opaque request correlation ID; error bodies contain the same request_id. Must not encode sensitive input.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "Cache-Control": {
+                "required": true,
+                "description": "Personal/error responses must not be cached.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "X-Contract-Version": {
+                "required": true,
+                "description": "Version of this API contract, independent of the unversioned /api URL.",
+                "schema": {
+                  "type": "string",
+                  "const": "0.1.0"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplianceRead"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "description": "JSON request exceeds the configured byte limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "description": "Temporarily unavailable service or authentication key retrieval.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/DefaultError"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Appliances"
+        ],
+        "summary": "Delete an owned appliance at its current version.",
+        "description": "Requires the current appliance version to prevent silent loss of concurrent edits. Server ownership checks are mandatory. Existing immutable report snapshots remain unchanged; deletion/retention of report data requires an approved future policy. Success has no body.",
+        "x-authentication-required": true,
+        "x-authentication-status": "Mechanism and credential transport unresolved; private operation activation is blocked pending identity/authorization design and verification.",
+        "operationId": "deleteAppliance",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ApplianceId"
+          },
+          {
+            "$ref": "#/components/parameters/Version"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Appliance deleted. No response body.",
+            "headers": {
+              "X-Request-ID": {
+                "required": true,
+                "description": "Opaque request correlation ID; error bodies contain the same request_id. Must not encode sensitive input.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "Cache-Control": {
+                "required": true,
+                "description": "Personal/error responses must not be cached.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "X-Contract-Version": {
+                "required": true,
+                "description": "Version of this API contract, independent of the unversioned /api URL.",
+                "schema": {
+                  "type": "string",
+                  "const": "0.1.0"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "description": "Temporarily unavailable service or authentication key retrieval.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/DefaultError"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/calculations": {
+      "post": {
+        "tags": [
+          "Calculations"
+        ],
+        "summary": "Preview deterministic estimates without persistence.",
+        "description": "Validate the entire request atomically. Inline source_status is a preview assertion, never confirmation evidence or permission to mutate an appliance. Reject duplicate IDs. Do not silently default missing factor to 100%; null factor stays incomplete. The deterministic engine may classify malformed legacy/internal rows invalid, but malformed HTTP schema/domain inputs return 422. No provider invocation or AI arithmetic.",
+        "x-authentication-required": true,
+        "x-authentication-status": "Mechanism and credential transport unresolved; private operation activation is blocked pending identity/authorization design and verification.",
+        "operationId": "calculatePreview",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CalculationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "headers": {
+              "X-Request-ID": {
+                "required": true,
+                "description": "Opaque request correlation ID; error bodies contain the same request_id. Must not encode sensitive input.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "Cache-Control": {
+                "required": true,
+                "description": "Personal/error responses must not be cached.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "X-Contract-Version": {
+                "required": true,
+                "description": "Version of this API contract, independent of the unversioned /api URL.",
+                "schema": {
+                  "type": "string",
+                  "const": "0.1.0"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalculationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "413": {
+            "description": "JSON request exceeds the configured byte limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "description": "Temporarily unavailable service or authentication key retrieval.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/DefaultError"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/reports": {
+      "post": {
+        "tags": [
+          "Reports"
+        ],
+        "summary": "Calculate and save an immutable owned report snapshot.",
+        "description": "Server loads owned persisted appliances and produces one consistent immutable input snapshot, preserving each appliance's confirmation, version and provenance. No client appliances or totals accepted. Calculation input is projected from saved records; recompute exactly server-side. Idempotent replay returns the original snapshot even if the current profile/appliances have changed. Persistence, ownership and retention are design gates; no deployed database or cloud account is implied.",
+        "x-authentication-required": true,
+        "x-authentication-status": "Mechanism and credential transport unresolved; private operation activation is blocked pending identity/authorization design and verification.",
+        "operationId": "createReport",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Existing original snapshot returned for an identical client_request_id replay.",
+            "headers": {
+              "X-Request-ID": {
+                "required": true,
+                "description": "Opaque request correlation ID; error bodies contain the same request_id. Must not encode sensitive input.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "Cache-Control": {
+                "required": true,
+                "description": "Personal/error responses must not be cached.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "X-Contract-Version": {
+                "required": true,
+                "description": "Version of this API contract, independent of the unversioned /api URL.",
+                "schema": {
+                  "type": "string",
+                  "const": "0.1.0"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportRead"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created immutable report.",
+            "headers": {
+              "X-Request-ID": {
+                "required": true,
+                "description": "Opaque request correlation ID; error bodies contain the same request_id. Must not encode sensitive input.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "Cache-Control": {
+                "required": true,
+                "description": "Personal/error responses must not be cached.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "X-Contract-Version": {
+                "required": true,
+                "description": "Version of this API contract, independent of the unversioned /api URL.",
+                "schema": {
+                  "type": "string",
+                  "const": "0.1.0"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportRead"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "description": "JSON request exceeds the configured byte limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "description": "Temporarily unavailable service or authentication key retrieval.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/DefaultError"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/reports/{report_id}": {
+      "get": {
+        "tags": [
+          "Reports"
+        ],
+        "summary": "Read an immutable owned report.",
+        "description": "Return the originally calculated snapshot, unaffected by subsequent appliance edits/deletion. All access is scoped to the verified owner; missing and cross-owner IDs use identical 404 responses.",
+        "x-authentication-required": true,
+        "x-authentication-status": "Mechanism and credential transport unresolved; private operation activation is blocked pending identity/authorization design and verification.",
+        "operationId": "getReport",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ReportId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "headers": {
+              "X-Request-ID": {
+                "required": true,
+                "description": "Opaque request correlation ID; error bodies contain the same request_id. Must not encode sensitive input.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "Cache-Control": {
+                "required": true,
+                "description": "Personal/error responses must not be cached.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "X-Contract-Version": {
+                "required": true,
+                "description": "Version of this API contract, independent of the unversioned /api URL.",
+                "schema": {
+                  "type": "string",
+                  "const": "0.1.0"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportRead"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "description": "Temporarily unavailable service or authentication key retrieval.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/DefaultError"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/reports/{report_id}/export.csv": {
+      "get": {
+        "tags": [
+          "Reports"
+        ],
+        "summary": "Export an immutable owned report as CSV.",
+        "description": "Export saved report inputs/results, preserving the same calculation values and incomplete-record information shown by the report. text/csv success; application/json stable errors. Exact column order: report_id,estimate,appliance_id,name,quantity,rated_watts,hours_per_day,effective_load_percent,source_method,source_status,calculation_status,daily_kwh,period_days,period_kwh,rate_ngn_per_kwh,tariff_provenance,grid_equivalent_cost_ngn,cost_basis,assumptions,exclusion_codes. estimate is literal true. cost_basis is grid_equivalent when tariff is present, otherwise empty. assumptions repeats the saved report assumptions joined with semicolons. Unknown numeric inputs and ineligible row energy/cost cells are empty; retain known input values. Use UTF-8, correct CSV quoting and spreadsheet-formula escaping of user-controlled text without modifying saved domain values. Full CSV/print behavior is specified in the prose contract; no live export implementation is claimed.",
+        "x-authentication-required": true,
+        "x-authentication-status": "Mechanism and credential transport unresolved; private operation activation is blocked pending identity/authorization design and verification.",
+        "operationId": "exportReportCsv",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ReportId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "UTF-8 CSV attachment based on the immutable report snapshot.",
+            "headers": {
+              "X-Request-ID": {
+                "required": true,
+                "description": "Opaque request correlation ID; error bodies contain the same request_id. Must not encode sensitive input.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "Cache-Control": {
+                "required": true,
+                "description": "Personal/error responses must not be cached.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "X-Contract-Version": {
+                "required": true,
+                "description": "Version of this API contract, independent of the unversioned /api URL.",
+                "schema": {
+                  "type": "string",
+                  "const": "0.1.0"
+                }
+              },
+              "Content-Disposition": {
+                "required": true,
+                "description": "Attachment filename generated by the server; never embed unchecked user input.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "description": "Temporarily unavailable service or authentication key retrieval.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/DefaultError"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "UUID": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "Timestamp": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "TrimmedText": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "^\\S(?:[\\s\\S]*\\S)?$(?![\\s\\S])",
+        "maxLength": 200
+      },
+      "NullableText": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/TrimmedText"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "SourceNotes": {
+        "anyOf": [
+          {
+            "type": "string",
+            "maxLength": 2000
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "Quantity": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 9007199254740991,
+        "description": "Strict JSON integer >= 1 within JavaScript's exact integer range. Boolean and numeric-string coercion is forbidden."
+      },
+      "RatedWatts": {
+        "anyOf": [
+          {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "description": "Customer-provided/confirmed real power in W. Never infer from appearance or silently substitute VA. No numeric default."
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "HoursPerDay": {
+        "anyOf": [
+          {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 24,
+            "description": "Customer estimate, including a valid explicit zero. No numeric default."
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "EffectiveLoadPercent": {
+        "anyOf": [
+          {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 100,
+            "description": "Explicit customer assumption. Missing/null remains incomplete until the user supplies a value; never silently substitute 100%."
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "PeriodDays": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 366
+      },
+      "GridTariff": {
+        "anyOf": [
+          {
+            "type": "number",
+            "minimum": 0,
+            "description": "Customer-supplied NGN per kWh; explicit zero is valid. Null means no cost scenario. Never infer a tariff."
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "EnergyDecimal": {
+        "type": "string",
+        "pattern": "^(0|[1-9][0-9]*)\\.[0-9]{6}$(?![\\s\\S])",
+        "description": "Nonnegative kWh serialized as a fixed six-decimal string. Exact decimal arithmetic with no intermediate rounding; ROUND_HALF_UP at presentation only."
+      },
+      "MoneyDecimal": {
+        "type": "string",
+        "pattern": "^(0|[1-9][0-9]*)\\.[0-9]{2}$(?![\\s\\S])",
+        "description": "Nonnegative NGN serialized as a fixed two-decimal string. Calculated from unrounded energy and tariff; ROUND_HALF_UP at presentation only."
+      },
+      "Sector": {
+        "type": "string",
+        "enum": [
+          "home",
+          "restaurant",
+          "salon",
+          "laundry",
+          "retail",
+          "office",
+          "hotel",
+          "workshop"
+        ]
+      },
+      "SourceMethod": {
+        "type": "string",
+        "enum": [
+          "manual",
+          "document",
+          "ai_label_extraction"
+        ],
+        "description": "M2 estimated-appliance sources only. measured is reserved for a future, separate measurement domain and is not accepted."
+      },
+      "Issue": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "code",
+          "message"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "pattern": "^(?:|/(?:[^~]|~[01])*)$(?![\\s\\S])",
+            "description": "JSON Pointer to the field, or an empty string for the complete object. No rejected values appear in errors."
+          },
+          "code": {
+            "type": "string",
+            "enum": [
+              "REQUIRED",
+              "UNKNOWN_FIELD",
+              "INVALID_TYPE",
+              "OUT_OF_RANGE",
+              "INVALID_FORMAT",
+              "BLANK_VALUE",
+              "CONFIRMATION_REQUIRED",
+              "UNCONFIRMED_VALUE",
+              "MISSING_VALUE",
+              "AMBIGUOUS_VALUE",
+              "DUPLICATE_ID",
+              "READ_ONLY_FIELD",
+              "INVALID_PROVENANCE"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^\\S(?:[\\s\\S]*\\S)?$(?![\\s\\S])"
+          }
+        }
+      },
+      "Warning": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "INCOMPLETE_RECORDS",
+              "INVALID_RECORDS",
+              "UNCONFIRMED_RECORDS",
+              "NO_ELIGIBLE_RECORDS",
+              "RATED_POWER_ESTIMATE",
+              "ROUNDING_APPLIED"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^\\S(?:[\\s\\S]*\\S)?$(?![\\s\\S])"
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "code",
+              "message",
+              "details",
+              "request_id"
+            ],
+            "properties": {
+              "code": {
+                "type": "string",
+                "enum": [
+                  "MALFORMED_JSON",
+                  "INVALID_IMAGE",
+                  "IMAGE_TOO_LARGE",
+                  "UNSUPPORTED_MEDIA_TYPE",
+                  "VALIDATION_ERROR",
+                  "CALCULATION_OUT_OF_RANGE",
+                  "AUTHENTICATION_REQUIRED",
+                  "INVALID_CREDENTIALS",
+                  "RESOURCE_NOT_FOUND",
+                  "STALE_VERSION",
+                  "IDEMPOTENCY_CONFLICT",
+                  "SCAN_EXPIRED",
+                  "SCAN_ALREADY_CONFIRMED",
+                  "RATE_LIMITED",
+                  "SCAN_PROVIDER_ERROR",
+                  "INVALID_SCAN_RESULT",
+                  "SCANNER_UNAVAILABLE",
+                  "SCAN_TIMEOUT",
+                  "INTERNAL_ERROR",
+                  "AUTHENTICATION_UNAVAILABLE",
+                  "SERVICE_UNAVAILABLE",
+                  "REQUEST_TOO_LARGE",
+                  "METHOD_NOT_ALLOWED",
+                  "INVALID_REQUEST"
+                ]
+              },
+              "message": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^\\S(?:[\\s\\S]*\\S)?$(?![\\s\\S])"
+              },
+              "details": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Issue"
+                }
+              },
+              "request_id": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^\\S(?:[\\s\\S]*\\S)?$(?![\\s\\S])"
+              }
+            }
+          }
+        },
+        "description": "Stable error envelope for application-controlled failures. Message text is informational; clients branch on codes. Never expose secrets, images, provider output, sensitive rejected inputs, or stack traces."
+      },
+      "StatusResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "imageScanningConfigured"
+        ],
+        "properties": {
+          "imageScanningConfigured": {
+            "type": "boolean",
+            "description": "Configuration capability flag only; true is not evidence of provider reachability, verified extraction, or launch readiness."
+          }
+        }
+      },
+      "ProfileCreate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "sector",
+          "currency",
+          "client_request_id"
+        ],
+        "properties": {
+          "name": {
+            "$ref": "#/components/schemas/NullableText"
+          },
+          "sector": {
+            "$ref": "#/components/schemas/Sector"
+          },
+          "currency": {
+            "type": "string",
+            "const": "NGN"
+          },
+          "client_request_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "description": "Idempotency scope: verified principal + create-profile operation. Repeating the same validated body returns the existing resource with 200; reuse with a different body returns 409 IDEMPOTENCY_CONFLICT."
+      },
+      "ProfileRead": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "sector",
+          "currency",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "$ref": "#/components/schemas/NullableText"
+          },
+          "sector": {
+            "$ref": "#/components/schemas/Sector"
+          },
+          "currency": {
+            "type": "string",
+            "const": "NGN"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "FieldProvenance": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "origin",
+          "evidence"
+        ],
+        "properties": {
+          "origin": {
+            "type": "string",
+            "enum": [
+              "user_entry",
+              "user_correction",
+              "label_extraction",
+              "catalogue_name",
+              "document"
+            ]
+          },
+          "evidence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "description": "Server-composed provenance. Preserve original visible label evidence even after customer corrections; source_notes do not replace that evidence. Null fields still have provenance and explanations when available."
+      },
+      "FieldProvenanceMap": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "quantity",
+          "rated_watts",
+          "hours_per_day",
+          "effective_load_percent",
+          "brand",
+          "model"
+        ],
+        "properties": {
+          "name": {
+            "$ref": "#/components/schemas/FieldProvenance"
+          },
+          "quantity": {
+            "$ref": "#/components/schemas/FieldProvenance"
+          },
+          "rated_watts": {
+            "$ref": "#/components/schemas/FieldProvenance"
+          },
+          "hours_per_day": {
+            "$ref": "#/components/schemas/FieldProvenance"
+          },
+          "effective_load_percent": {
+            "$ref": "#/components/schemas/FieldProvenance"
+          },
+          "brand": {
+            "$ref": "#/components/schemas/FieldProvenance"
+          },
+          "model": {
+            "$ref": "#/components/schemas/FieldProvenance"
+          }
+        },
+        "description": "Required per-field map composed by the server. quantity, hours_per_day and effective_load_percent use user_entry, never label extraction. catalogue_name applies only to name. Field/source consistency is validated semantically."
+      },
+      "ApplianceCreate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "quantity",
+          "rated_watts",
+          "hours_per_day",
+          "effective_load_percent",
+          "brand",
+          "model",
+          "source_method",
+          "source_notes",
+          "scan_id",
+          "confirmation",
+          "client_request_id"
+        ],
+        "properties": {
+          "name": {
+            "$ref": "#/components/schemas/TrimmedText"
+          },
+          "quantity": {
+            "$ref": "#/components/schemas/Quantity"
+          },
+          "rated_watts": {
+            "$ref": "#/components/schemas/RatedWatts"
+          },
+          "hours_per_day": {
+            "$ref": "#/components/schemas/HoursPerDay"
+          },
+          "effective_load_percent": {
+            "$ref": "#/components/schemas/EffectiveLoadPercent"
+          },
+          "brand": {
+            "$ref": "#/components/schemas/NullableText"
+          },
+          "model": {
+            "$ref": "#/components/schemas/NullableText"
+          },
+          "source_method": {
+            "$ref": "#/components/schemas/SourceMethod"
+          },
+          "source_notes": {
+            "$ref": "#/components/schemas/SourceNotes"
+          },
+          "scan_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "confirmation": {
+            "type": "boolean",
+            "const": true
+          },
+          "client_request_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "description": "All fields are explicit; unknown/server-controlled fields are rejected. Null numeric values are intentionally incomplete, not zero/defaults. confirmation:true acknowledges review of all final submitted values; the server sets confirmed status/timestamps. AI source requires a principal/profile-linked unexpired unused scan receipt. Manual/document source requires null scan_id. The catalogue may supply a name only. Idempotency is scoped to principal + operation + profile; replay returns 200 even if its consumed scan is no longer usable, while different payload reuse returns 409.",
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "source_method": {
+                  "const": "ai_label_extraction"
+                }
+              },
+              "required": [
+                "source_method"
+              ]
+            },
+            "then": {
+              "properties": {
+                "scan_id": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "scan_id": {
+                  "type": "null"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "AppliancePatch": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "version",
+          "confirmation"
+        ],
+        "properties": {
+          "name": {
+            "$ref": "#/components/schemas/TrimmedText"
+          },
+          "quantity": {
+            "$ref": "#/components/schemas/Quantity"
+          },
+          "rated_watts": {
+            "$ref": "#/components/schemas/RatedWatts"
+          },
+          "hours_per_day": {
+            "$ref": "#/components/schemas/HoursPerDay"
+          },
+          "effective_load_percent": {
+            "$ref": "#/components/schemas/EffectiveLoadPercent"
+          },
+          "brand": {
+            "$ref": "#/components/schemas/NullableText"
+          },
+          "model": {
+            "$ref": "#/components/schemas/NullableText"
+          },
+          "source_method": {
+            "$ref": "#/components/schemas/SourceMethod"
+          },
+          "source_notes": {
+            "$ref": "#/components/schemas/SourceNotes"
+          },
+          "scan_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "confirmation": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "description": "Partial edit, requiring a current version and affirmative review of the final merged values. At least one mutable field is required. Apply atomically; all omitted mutable fields retain their values. Null deliberately clears a nullable value. Validate final source_method/scan_id/provenance consistency after merge. Server updates confirmation and provenance; stale version is 409 STALE_VERSION. No client_request_id or server-derived fields accepted.",
+        "anyOf": [
+          {
+            "required": [
+              "name"
+            ]
+          },
+          {
+            "required": [
+              "quantity"
+            ]
+          },
+          {
+            "required": [
+              "rated_watts"
+            ]
+          },
+          {
+            "required": [
+              "hours_per_day"
+            ]
+          },
+          {
+            "required": [
+              "effective_load_percent"
+            ]
+          },
+          {
+            "required": [
+              "brand"
+            ]
+          },
+          {
+            "required": [
+              "model"
+            ]
+          },
+          {
+            "required": [
+              "source_method"
+            ]
+          },
+          {
+            "required": [
+              "source_notes"
+            ]
+          },
+          {
+            "required": [
+              "scan_id"
+            ]
+          }
+        ]
+      },
+      "ApplianceRead": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "quantity",
+          "rated_watts",
+          "hours_per_day",
+          "effective_load_percent",
+          "brand",
+          "model",
+          "source_method",
+          "source_notes",
+          "scan_id",
+          "id",
+          "profile_id",
+          "version",
+          "source_status",
+          "confirmed_at",
+          "created_at",
+          "updated_at",
+          "field_provenance",
+          "calculated_daily_kwh",
+          "calculation_status"
+        ],
+        "properties": {
+          "name": {
+            "$ref": "#/components/schemas/TrimmedText"
+          },
+          "quantity": {
+            "$ref": "#/components/schemas/Quantity"
+          },
+          "rated_watts": {
+            "$ref": "#/components/schemas/RatedWatts"
+          },
+          "hours_per_day": {
+            "$ref": "#/components/schemas/HoursPerDay"
+          },
+          "effective_load_percent": {
+            "$ref": "#/components/schemas/EffectiveLoadPercent"
+          },
+          "brand": {
+            "$ref": "#/components/schemas/NullableText"
+          },
+          "model": {
+            "$ref": "#/components/schemas/NullableText"
+          },
+          "source_method": {
+            "$ref": "#/components/schemas/SourceMethod"
+          },
+          "source_notes": {
+            "$ref": "#/components/schemas/SourceNotes"
+          },
+          "scan_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "profile_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "source_status": {
+            "type": "string",
+            "const": "customer_confirmed"
+          },
+          "confirmed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "field_provenance": {
+            "$ref": "#/components/schemas/FieldProvenanceMap"
+          },
+          "calculated_daily_kwh": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EnergyDecimal"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "calculation_status": {
+            "type": "string",
+            "enum": [
+              "eligible",
+              "incomplete"
+            ]
+          }
+        },
+        "description": "Confirmed estimated appliance, which may still be incomplete. Calculated values are server-derived. Eligible iff the confirmed numeric inputs are complete and valid; otherwise daily energy is null. Confirmation means customer review, not measurement or independent verification. Owner identity is never accepted from the client.",
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "source_method": {
+                  "const": "ai_label_extraction"
+                }
+              },
+              "required": [
+                "source_method"
+              ]
+            },
+            "then": {
+              "properties": {
+                "scan_id": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "scan_id": {
+                  "type": "null"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "ProfileWithAppliances": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "profile",
+          "appliances"
+        ],
+        "properties": {
+          "profile": {
+            "$ref": "#/components/schemas/ProfileRead"
+          },
+          "appliances": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ApplianceRead"
+            }
+          }
+        }
+      },
+      "UploadConsent": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "granted",
+          "notice_version"
+        ],
+        "properties": {
+          "granted": {
+            "type": "boolean",
+            "const": true
+          },
+          "notice_version": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^\\S(?:[\\s\\S]*\\S)?$(?![\\s\\S])"
+          }
+        },
+        "description": "Explicit acknowledgement of the versioned upload notice. Notice wording and retention/provider terms require approval before live uploads; this schema does not approve a privacy policy."
+      },
+      "ScanRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "imageDataUrl",
+          "profile_id",
+          "consent"
+        ],
+        "properties": {
+          "imageDataUrl": {
+            "type": "string",
+            "pattern": "^data:image/(jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$(?![\\s\\S])",
+            "description": "One nonempty base64 JPEG, PNG or WebP data URL. Regex is structural only: server must validate base64, decoded bytes, actual MIME/content, image decoding and configured limits. Malformed/unsupported decoded image is 400 INVALID_IMAGE; configured size violation is 400 IMAGE_TOO_LARGE."
+          },
+          "profile_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "consent": {
+            "$ref": "#/components/schemas/UploadConsent"
+          }
+        },
+        "description": "The authenticated principal must own the profile. Transport image data and provider output are untrusted. Missing/invalid imageDataUrl, including missing key, schema type/pattern failure or corrupt decoded image, maps to 400 INVALID_IMAGE rather than generic 422; configured oversize maps to 400 IMAGE_TOO_LARGE. Invalid non-image profile/consent fields map to 422. consent.notice_version must equal the active approved notice; unknown versions produce 422 VALIDATION_ERROR with INVALID_PROVENANCE detail. If the notice, provider or required privacy/scanning prerequisites are unconfigured, return 503 SCANNER_UNAVAILABLE. Profile linkage and explicit consent refine the blueprint request. Limits, provider configuration, retention/deletion and receipt mechanism remain launch gates."
+      },
+      "ScanCandidate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "brand",
+          "model",
+          "watts",
+          "voltage",
+          "current",
+          "kwh_per_day",
+          "notes",
+          "visible_evidence"
+        ],
+        "properties": {
+          "name": {
+            "$ref": "#/components/schemas/NullableText"
+          },
+          "brand": {
+            "$ref": "#/components/schemas/NullableText"
+          },
+          "model": {
+            "$ref": "#/components/schemas/NullableText"
+          },
+          "watts": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "description": "Visible unambiguous W rating only. Missing, VA-only or conflicting ratings return null."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "voltage": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^\\S(?:[\\s\\S]*\\S)?$(?![\\s\\S])"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "current": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^\\S(?:[\\s\\S]*\\S)?$(?![\\s\\S])"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kwh_per_day": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0,
+                "description": "Visible label energy evidence only, kept distinct from modeled daily energy and actual measured consumption. Never automatically mapped to calculated_daily_kwh or an energy record."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "notes": {
+            "type": "string"
+          },
+          "visible_evidence": {
+            "type": "string"
+          }
+        },
+        "description": "Candidates contain visible evidence only. All missing/ambiguous fields are null, not empty strings, zero or guesses. Keep VA/current/voltage evidence explicit in notes/evidence; no automatic VA to W conversion. Never extract usage quantity, runtime or load percentage from a rating label."
+      },
+      "ScanResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "scan_id",
+          "profile_id",
+          "expires_at",
+          "result",
+          "requiresConfirmation"
+        ],
+        "properties": {
+          "scan_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "profile_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "result": {
+            "$ref": "#/components/schemas/ScanCandidate"
+          },
+          "requiresConfirmation": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "description": "Extraction only: creates no appliance and cannot confirm any value. scan_id is an opaque candidate receipt linked to the principal and profile; expiry is configured candidate validity, not an image-retention commitment. Receipt persistence/security mechanism and privacy policy must be approved before live integration. All candidates remain editable before an explicit appliance write."
+      },
+      "CalculationInputRow": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "quantity",
+          "rated_watts",
+          "hours_per_day",
+          "effective_load_percent",
+          "source_status"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "$ref": "#/components/schemas/TrimmedText"
+          },
+          "quantity": {
+            "$ref": "#/components/schemas/Quantity"
+          },
+          "rated_watts": {
+            "$ref": "#/components/schemas/RatedWatts"
+          },
+          "hours_per_day": {
+            "$ref": "#/components/schemas/HoursPerDay"
+          },
+          "effective_load_percent": {
+            "$ref": "#/components/schemas/EffectiveLoadPercent"
+          },
+          "source_status": {
+            "type": "string",
+            "enum": [
+              "unconfirmed",
+              "customer_confirmed"
+            ]
+          }
+        },
+        "description": "Inline preview input. Client-supplied confirmation status is a preview assertion only, never persisted evidence of confirmation or ownership. Measured readings belong to a separate future domain."
+      },
+      "CalculationRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "appliances",
+          "period_days",
+          "rate_ngn_per_kwh"
+        ],
+        "properties": {
+          "appliances": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CalculationInputRow"
+            },
+            "description": "IDs must be unique within the request (semantic validation). An empty array is valid and produces null totals with NO_ELIGIBLE_RECORDS."
+          },
+          "period_days": {
+            "$ref": "#/components/schemas/PeriodDays"
+          },
+          "rate_ngn_per_kwh": {
+            "$ref": "#/components/schemas/GridTariff"
+          }
+        },
+        "description": "Stateless deterministic preview only; it writes no appliance or report. All JSON numeric inputs must be finite numbers, never booleans or numeric strings. Decimal parsing must preserve transmitted decimal values. Invalid HTTP input is an atomic 422, not a partially successful calculation."
+      },
+      "CalculationRowResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "input_index",
+          "id",
+          "status",
+          "daily_kwh",
+          "period_kwh",
+          "issues"
+        ],
+        "properties": {
+          "input_index": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Zero-based input position. Output order matches input order; each row is correlated without inventing an identifier."
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Original valid input UUID, or null when a legacy/internal malformed row has no valid UUID. Every valid HTTP input preserves its original UUID. Never invent replacement IDs."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "eligible",
+              "incomplete",
+              "invalid",
+              "unconfirmed"
+            ]
+          },
+          "daily_kwh": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EnergyDecimal"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "period_kwh": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EnergyDecimal"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Issue"
+            }
+          }
+        },
+        "description": "Exclusive status precedence: invalid > unconfirmed > incomplete > eligible. Noneligible rows have null energy and are excluded from totals; eligible rows have nonnull energy, including 0.000000 when runtime is zero. invalid is available to the pure engine for legacy/internal malformed input; use input_index and nullable id to correlate such rows without invented identifiers. Valid HTTP inputs preserve the original UUID and output order matches input order. Schema-invalid HTTP requests fail atomically with 422."
+      },
+      "CalculationCounts": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "total",
+          "eligible",
+          "incomplete",
+          "invalid",
+          "unconfirmed"
+        ],
+        "properties": {
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "eligible": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "incomplete": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "invalid": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "unconfirmed": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "description": "Exclusive category counts sum to total and agree with row statuses."
+      },
+      "CalculationTotals": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "daily_kwh",
+          "period_kwh",
+          "grid_equivalent_cost_ngn"
+        ],
+        "properties": {
+          "daily_kwh": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EnergyDecimal"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "period_kwh": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EnergyDecimal"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "grid_equivalent_cost_ngn": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoneyDecimal"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "description": "Sum eligible rows using exact unrounded values, then format totals once. No eligible rows => all totals null. At least one eligible row => energy nonnull, even if zero. Cost is nonnull only when there is an eligible row and tariff is nonnull; explicit zero tariff yields 0.00. Cost is a hypothetical all-grid scenario, never an actual mixed-source bill or savings claim."
+      },
+      "CalculationResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "contract_version",
+          "estimate",
+          "period_days",
+          "rate_ngn_per_kwh",
+          "tariff_provenance",
+          "rows",
+          "counts",
+          "totals",
+          "warnings",
+          "assumptions"
+        ],
+        "properties": {
+          "contract_version": {
+            "type": "string",
+            "const": "0.1.0"
+          },
+          "estimate": {
+            "type": "boolean",
+            "const": true
+          },
+          "period_days": {
+            "$ref": "#/components/schemas/PeriodDays"
+          },
+          "rate_ngn_per_kwh": {
+            "$ref": "#/components/schemas/GridTariff"
+          },
+          "tariff_provenance": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "user_input"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Server-derived source: user_input iff rate_ngn_per_kwh is nonnull, including zero; null iff tariff is null. This records customer input, not verified bill evidence. Requests cannot assert this output field."
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CalculationRowResult"
+            }
+          },
+          "counts": {
+            "$ref": "#/components/schemas/CalculationCounts"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/CalculationTotals"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Warning"
+            }
+          },
+          "assumptions": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            }
+          }
+        },
+        "description": "Authoritative deterministic formula: quantity * rated_watts * hours_per_day * effective_load_percent / 100 / 1000; period energy = daily energy * period_days. No implicit defaults. Exact decimal calculations, no intermediate rounding, ROUND_HALF_UP only when serializing fixed6/fixed2 strings. If an operation cannot represent a value under its documented implementation limits, reject the entire request with 422 CALCULATION_OUT_OF_RANGE; never clamp/default. Rounded rows may not sum visually to the independently rounded total; disclose with ROUNDING_APPLIED when applicable. Display results as estimates, with rated-power and customer-usage assumptions."
+      },
+      "ReportCreate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "profile_id",
+          "period_days",
+          "rate_ngn_per_kwh",
+          "client_request_id"
+        ],
+        "properties": {
+          "profile_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "period_days": {
+            "$ref": "#/components/schemas/PeriodDays"
+          },
+          "rate_ngn_per_kwh": {
+            "$ref": "#/components/schemas/GridTariff"
+          },
+          "client_request_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "description": "Server loads the owned profile's persisted confirmed appliance inputs, computes deterministically, and saves an immutable report snapshot. No inline appliances, client totals, or owner fields are accepted. Idempotency scope: principal + create-report operation + profile; same body replay returns 200 existing snapshot, conflicting reuse returns 409. Report persistence/privacy approval remains an implementation gate."
+      },
+      "ReportInputSnapshot": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "appliances",
+          "period_days",
+          "rate_ngn_per_kwh",
+          "tariff_provenance"
+        ],
+        "properties": {
+          "appliances": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ApplianceRead"
+            }
+          },
+          "period_days": {
+            "$ref": "#/components/schemas/PeriodDays"
+          },
+          "rate_ngn_per_kwh": {
+            "$ref": "#/components/schemas/GridTariff"
+          },
+          "tariff_provenance": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "user_input"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Server-derived source: user_input iff the saved rate_ngn_per_kwh is nonnull, including zero; null iff tariff is null. Must agree with calculation.tariff_provenance. No independent bill verification is claimed."
+          }
+        },
+        "description": "Immutable server-loaded full appliance snapshot, preserving versions, provenance, confirmed_at and values despite later edits/deletions. calculation rows are a projection of these saved inputs; this snapshot never accepts client-provided derived totals."
+      },
+      "ReportRead": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "profile_id",
+          "created_at",
+          "input_snapshot",
+          "calculation"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "profile_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "input_snapshot": {
+            "$ref": "#/components/schemas/ReportInputSnapshot"
+          },
+          "calculation": {
+            "$ref": "#/components/schemas/CalculationResponse"
+          }
+        },
+        "description": "Immutable report. Calculation input values must agree with the input snapshot and only use eligible confirmed rows. Persisting a report is not a claim that its estimates are measured, that deployment exists, or that a retention policy has been approved."
+      }
+    },
+    "parameters": {
+      "ProfileId": {
+        "name": "profile_id",
+        "in": "path",
+        "required": true,
+        "description": "Owned profile UUID. Missing/cross-owner resources are indistinguishable 404.",
+        "schema": {
+          "$ref": "#/components/schemas/UUID"
+        }
+      },
+      "ApplianceId": {
+        "name": "appliance_id",
+        "in": "path",
+        "required": true,
+        "description": "Owned appliance UUID. Missing/cross-owner resources are indistinguishable 404.",
+        "schema": {
+          "$ref": "#/components/schemas/UUID"
+        }
+      },
+      "ReportId": {
+        "name": "report_id",
+        "in": "path",
+        "required": true,
+        "description": "Owned immutable report UUID. Missing/cross-owner resources are indistinguishable 404.",
+        "schema": {
+          "$ref": "#/components/schemas/UUID"
+        }
+      },
+      "Version": {
+        "name": "version",
+        "in": "query",
+        "required": true,
+        "description": "Current appliance version; stale version gives 409 STALE_VERSION. Integer query serialization is validated without boolean/coercive fallback.",
+        "schema": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "400: malformed JSON; or a structurally/semantically invalid, unsupported or configured-oversize scan image. The blueprint's 400 image-size mapping is retained. No partial mutation.",
+        "headers": {
+          "X-Request-ID": {
+            "required": true,
+            "description": "Opaque request correlation ID; error bodies contain the same request_id. Must not encode sensitive input.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "Cache-Control": {
+            "required": true,
+            "description": "Personal/error responses must not be cached.",
+            "schema": {
+              "type": "string",
+              "const": "no-store"
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Error"
+                },
+                {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "MALFORMED_JSON",
+                            "INVALID_IMAGE",
+                            "IMAGE_TOO_LARGE"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "UnsupportedMediaType": {
+        "description": "415: unsupported outer HTTP request Content-Type. Scan JSON still requires application/json; decoded unsupported image content uses 400 INVALID_IMAGE.",
+        "headers": {
+          "X-Request-ID": {
+            "required": true,
+            "description": "Opaque request correlation ID; error bodies contain the same request_id. Must not encode sensitive input.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "Cache-Control": {
+            "required": true,
+            "description": "Personal/error responses must not be cached.",
+            "schema": {
+              "type": "string",
+              "const": "no-store"
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Error"
+                },
+                {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "UNSUPPORTED_MEDIA_TYPE"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "ValidationError": {
+        "description": "422: well-formed JSON fails strict schema/domain validation, including unknown/read-only fields, missing/null-required values, numeric strings, JSON booleans used as numbers, missing/false confirmation, inconsistent provenance, duplicate preview IDs or an explicitly reported calculation representation limit. No coercion, clamping, defaults or partial write. details identify stable field codes and JSON Pointer paths.",
+        "headers": {
+          "X-Request-ID": {
+            "required": true,
+            "description": "Opaque request correlation ID; error bodies contain the same request_id. Must not encode sensitive input.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "Cache-Control": {
+            "required": true,
+            "description": "Personal/error responses must not be cached.",
+            "schema": {
+              "type": "string",
+              "const": "no-store"
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Error"
+                },
+                {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "VALIDATION_ERROR",
+                            "CALCULATION_OUT_OF_RANGE"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "401: verified identity is missing or invalid. Identity provider and credential transport are not selected. Implementation must choose and review its authentication mechanism before enabling private operations; this response must follow that mechanism's HTTP challenge requirements without exposing credentials.",
+        "headers": {
+          "X-Request-ID": {
+            "required": true,
+            "description": "Opaque request correlation ID; error bodies contain the same request_id. Must not encode sensitive input.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "Cache-Control": {
+            "required": true,
+            "description": "Personal/error responses must not be cached.",
+            "schema": {
+              "type": "string",
+              "const": "no-store"
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Error"
+                },
+                {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "AUTHENTICATION_REQUIRED",
+                            "INVALID_CREDENTIALS"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "404: resource does not exist or belongs to another principal. Use identical envelope/message behavior for missing and cross-owner IDs.",
+        "headers": {
+          "X-Request-ID": {
+            "required": true,
+            "description": "Opaque request correlation ID; error bodies contain the same request_id. Must not encode sensitive input.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "Cache-Control": {
+            "required": true,
+            "description": "Personal/error responses must not be cached.",
+            "schema": {
+              "type": "string",
+              "const": "no-store"
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Error"
+                },
+                {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "RESOURCE_NOT_FOUND"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "Conflict": {
+        "description": "409: stale appliance version; conflicting idempotency-key body; or scan receipt expired/already consumed. A successful same-body idempotent create replay is handled before rechecking a consumed/expired scan and returns 200.",
+        "headers": {
+          "X-Request-ID": {
+            "required": true,
+            "description": "Opaque request correlation ID; error bodies contain the same request_id. Must not encode sensitive input.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "Cache-Control": {
+            "required": true,
+            "description": "Personal/error responses must not be cached.",
+            "schema": {
+              "type": "string",
+              "const": "no-store"
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Error"
+                },
+                {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "STALE_VERSION",
+                            "IDEMPOTENCY_CONFLICT",
+                            "SCAN_EXPIRED",
+                            "SCAN_ALREADY_CONFIRMED"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "RateLimited": {
+        "description": "429: configured operation limit reached; manual appliance entry/calculation must remain usable when scanning is limited. Operational quotas/budget are not selected here.",
+        "headers": {
+          "X-Request-ID": {
+            "required": true,
+            "description": "Opaque request correlation ID; error bodies contain the same request_id. Must not encode sensitive input.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "Cache-Control": {
+            "required": true,
+            "description": "Personal/error responses must not be cached.",
+            "schema": {
+              "type": "string",
+              "const": "no-store"
+            }
+          },
+          "Retry-After": {
+            "description": "Retry delay in seconds, when known. No provider-specific or budget data is exposed.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]+$(?![\\s\\S])"
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Error"
+                },
+                {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "RATE_LIMITED"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "ScanProviderError": {
+        "description": "502: provider failed or returned malformed/invalid structured candidate data. Safe error, editable manual fallback, no saved appliance. Do not expose provider payloads.",
+        "headers": {
+          "X-Request-ID": {
+            "required": true,
+            "description": "Opaque request correlation ID; error bodies contain the same request_id. Must not encode sensitive input.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "Cache-Control": {
+            "required": true,
+            "description": "Personal/error responses must not be cached.",
+            "schema": {
+              "type": "string",
+              "const": "no-store"
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Error"
+                },
+                {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "SCAN_PROVIDER_ERROR",
+                            "INVALID_SCAN_RESULT"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "ScannerUnavailable": {
+        "description": "503: scanner is unconfigured or unavailable, or required live-integration gates are unresolved. Manual entry remains available.",
+        "headers": {
+          "X-Request-ID": {
+            "required": true,
+            "description": "Opaque request correlation ID; error bodies contain the same request_id. Must not encode sensitive input.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "Cache-Control": {
+            "required": true,
+            "description": "Personal/error responses must not be cached.",
+            "schema": {
+              "type": "string",
+              "const": "no-store"
+            }
+          },
+          "Retry-After": {
+            "description": "Retry delay in seconds, when known. No provider-specific or budget data is exposed.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]+$(?![\\s\\S])"
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Error"
+                },
+                {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "SCANNER_UNAVAILABLE"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "ScanTimeout": {
+        "description": "504: scan/provider operation exceeded configured deadline. No confirmed appliance was created; manual fallback remains available.",
+        "headers": {
+          "X-Request-ID": {
+            "required": true,
+            "description": "Opaque request correlation ID; error bodies contain the same request_id. Must not encode sensitive input.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "Cache-Control": {
+            "required": true,
+            "description": "Personal/error responses must not be cached.",
+            "schema": {
+              "type": "string",
+              "const": "no-store"
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Error"
+                },
+                {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "SCAN_TIMEOUT"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "InternalError": {
+        "description": "500: unexpected application failure. Opaque safe message and request ID only; no raw stack/provider response/secrets.",
+        "headers": {
+          "X-Request-ID": {
+            "required": true,
+            "description": "Opaque request correlation ID; error bodies contain the same request_id. Must not encode sensitive input.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "Cache-Control": {
+            "required": true,
+            "description": "Personal/error responses must not be cached.",
+            "schema": {
+              "type": "string",
+              "const": "no-store"
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Error"
+                },
+                {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "INTERNAL_ERROR"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "DefaultError": {
+        "description": "Stable envelope for any other application-controlled error status. Infrastructure failures outside application control require gateway integration before launch; this contract does not claim those integrations exist.",
+        "headers": {
+          "X-Request-ID": {
+            "required": true,
+            "description": "Opaque request correlation ID; error bodies contain the same request_id. Must not encode sensitive input.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "Cache-Control": {
+            "required": true,
+            "description": "Personal/error responses must not be cached.",
+            "schema": {
+              "type": "string",
+              "const": "no-store"
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "RS256 access token for the configured API audience, with iss/sub/aud/exp/iat claims and a trusted JWKS kid. No locally issued passwords or bypass tokens."
+      }
+    }
+  },
+  "security": [
+    {
+      "BearerAuth": []
+    }
+  ],
+  "x-json-representation-limits": "UTF-8 JSON; no duplicate keys or nonfinite numbers; no NUL or unpaired surrogate text; maximum nesting depth 64; configured byte limit; exact Decimal numeric budgets from the calculation engine."
+}

@@ -1,9 +1,11 @@
 # Service data access patterns
 
-These patterns define the future trusted backend's use of the M4 schema.
+These patterns define the trusted backend's use of the persistence schema.
 Examples use PostgreSQL positional parameters and are separate operations, not
 a batch script. Bind values through a driver; never interpolate user text into
-SQL. M4 does not yet implement that driver or HTTP error mapping.
+SQL. The [M5 service](../api/README.md) implements the driver, verified identity
+mapping, scoped queries and error mapping. Its psycopg calls use `%s` placeholders;
+these examples show PostgreSQL's equivalent `$n` parameter notation.
 
 ## Connection and request context
 
@@ -22,6 +24,7 @@ SELECT set_config('powershift.owner_id', $1::text, true),
 COMMIT;
 ```
 
+M5 calls migration 0003's identity helper only after validating the JWT.
 Use a server-generated/sanitized nonblank request ID of at most 200 characters.
 Rollback on every error before releasing the connection. Never leave a
 transaction open while calling an external AI provider or waiting for customer
@@ -34,9 +37,9 @@ Validate the reviewed request, including exact decimal types, allowed fields,
 confirmation and provenance rules, before calculating its SHA256 fingerprint.
 The fingerprint identifies the full normalized meaningful request, scoped by
 owner, operation and profile. Server-owned timestamps/IDs and request trace IDs
-are not input. The production adapter must implement/test one stable
-canonicalization preserving exact decimal values; M4 stores/enforces the key
-and fingerprint, not the canonicalization algorithm.
+are not input. M5 implements/tests a typed canonical tree preserving exact
+equivalent decimal values without ambient precision dependence. M4 stores and
+enforces the key and fingerprint, not the canonicalization algorithm.
 
 Check the durable ledger before scan expiry/consumption on retries:
 

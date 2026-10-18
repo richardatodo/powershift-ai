@@ -37,6 +37,30 @@ this journal; application roles must not own it or receive write access to it.
 Run migrations through an administrative deployment identity, separately from
 the restricted application identity.
 
+## Native administrative command
+
+M5 adds `migrate-postgres.cjs`, which uses the existing journal/checksum runner
+through pinned `pg@8.16.3`. Install that driver in TEMP using the native-test
+instructions below, set `POWERSHIFT_PG_ROOT`, and provide an administrative
+`POWERSHIFT_MIGRATION_DATABASE_URL` through the environment. Then run:
+
+```powershell
+node tools/db/migrate-postgres.cjs
+```
+
+No credentials are read from repository files or printed. Failures print a safe
+message; investigate configuration/history with a separate admin connection.
+Explicit development rollback requires both flags and reverts one migration:
+
+```powershell
+node tools/db/migrate-postgres.cjs --down --allow-destructive-down
+```
+
+M5 adds migration 0003 for verified identity resolution. Its down file removes
+only the helper/policy; subsequent down versions remove report guards and domain
+data. Native M5 regression passed all 73 tests with all three migration versions.
+The API startup never runs migrations or creates runtime logins.
+
 ## Isolated PostgreSQL migration tests
 
 The integration suite uses the actual PostgreSQL engine compiled to WASM in
