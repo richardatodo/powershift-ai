@@ -85,6 +85,14 @@ def profile_get(conn, resource_id):
     return {"profile": project(profile, PROFILE_FIELDS), "appliances": [appliance_read(row) for row in rows]}
 
 
+def profile_list(conn, after=None, limit=50):
+    rows = conn.execute("SELECT * FROM powershift.profiles WHERE owner_id=powershift.current_owner_id() "
+                        "AND (%s::uuid IS NULL OR id>%s::uuid) ORDER BY id LIMIT %s",
+                        (after, after, limit + 1)).fetchall()
+    return {"profiles": [project(row, PROFILE_FIELDS) for row in rows[:limit]],
+            "next_cursor": str(rows[limit - 1]["id"]) if len(rows) > limit else None}
+
+
 def provenance(conn, profile_id, values, old=None):
     fields = ("name", "quantity", "rated_watts", "hours_per_day", "effective_load_percent", "brand", "model")
     receipt = None

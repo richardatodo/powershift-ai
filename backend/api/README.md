@@ -81,7 +81,7 @@ The [tracked OpenAPI document](openapi.json) declares private bearer security
 and is available through `app.openapi()`. Public Swagger/Redoc/OpenAPI HTTP routes
 are disabled by default.
 
-- Profiles: create/replay and retrieve an owned profile with appliances.
+- Profiles: list, create/replay and retrieve an owned profile with appliances.
 - Appliances: confirmed manual/document/associated-scan creation, version-checked
   edit/reconfirmation and deletion, with server-composed provenance.
 - Calculations: authenticated strict JSON passed to the unchanged M3 engine.
@@ -146,3 +146,10 @@ and 73 native persistence tests on PostgreSQL 17.11. JWTs use ephemeral test RSA
 keys and mocked JWKS HTTP responses; live identity onboarding was not tested.
 Starlette TestClient emits one httpx adapter deprecation warning; tests pass and
 the runtime JWKS client is unaffected.
+
+M6 adds authenticated `GET /api/profiles` for browser profile selection. It
+returns `{profiles: ProfileRead[], next_cursor: UUID | null}` with owner-scoped
+UUID keyset pagination, optional `after` cursor and a `limit` from 1 to 100
+(default 50). Unknown/duplicate query fields are rejected. The M6 API regression
+run passed 151 Python tests (70 API/security + 81 calculation); M5's migration
+verification above records its earlier native persistence run.

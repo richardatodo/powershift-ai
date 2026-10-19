@@ -187,6 +187,17 @@ def create_app(settings=None, *, database=None, verifier=None):
         result, code = run(request, identity, lambda c: service.profile_create(c, data))
         return response(result, code)
 
+    @app.get("/api/profiles")
+    def list_profiles(request: Request, identity: Principal = Depends(principal)):
+        query = request.query_params
+        if set(query) - {"after", "limit"} or any(len(query.getlist(k)) != 1 for k in query):
+            raise invalid()
+        after = uuid_text(query["after"]) if "after" in query else None
+        text = query.get("limit", "50")
+        if not text.isascii() or not text.isdigit() or len(text) > 3 or not 1 <= int(text) <= 100:
+            raise invalid("/limit", "OUT_OF_RANGE")
+        return response(run(request, identity, lambda c: service.profile_list(c, after, int(text))))
+
     @app.get("/api/profiles/{profile_id}")
     def get_profile(profile_id: str, request: Request, identity: Principal = Depends(principal)):
         resource = uuid_text(profile_id)

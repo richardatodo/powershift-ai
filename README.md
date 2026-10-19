@@ -11,9 +11,10 @@ M1 established the repository/environment baseline. M2 defined and reviewed the
 domain/API contracts. M3 implements the standalone Python calculation engine and
 its tests. M4 adds the PostgreSQL schema, transactional migrations, ownership
 constraints and persistence tests. M5 adds FastAPI, verified JWT authentication,
-owner-scoped PostgreSQL integration, report snapshots and CSV responses. The
-frontend, live managed sign-in configuration, AI provider and report/export UI
-are not implemented yet.
+owner-scoped PostgreSQL integration, report snapshots and CSV responses. M6 adds
+the React manual workflow and dashboard: profiles, appliance entry/edit/delete,
+missing-data feedback and server-calculated estimates. Live managed sign-in
+configuration, AI integration and report/export UI remain future work.
 
 The engine has no third-party dependencies. Its public interfaces live in
 [`backend/calculations`](backend/calculations/__init__.py).
@@ -49,6 +50,19 @@ HTTP/authentication tests. Once configured:
 
 Only `/api/status` is public. All other API operations require a verified RS256
 bearer access token for the configured API audience. Scanning remains disabled.
+
+## Run the frontend
+
+See [`frontend`](frontend/README.md) for identity-provider configuration, local
+API proxying and browser tests. With the API and browser sign-in configured:
+
+```powershell
+npm.cmd --prefix frontend ci
+npm.cmd --prefix frontend run dev
+```
+
+Open `http://127.0.0.1:5173`. The browser uses server-calculated energy values;
+unknown required inputs remain incomplete and excluded from totals.
 
 ## Calculate an estimate
 

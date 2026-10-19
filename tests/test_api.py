@@ -108,6 +108,7 @@ def test_public_status_and_auth_contract(signing):
 
 
 @pytest.mark.parametrize("method,path", [
+    ("get", "/api/profiles"),
     ("post", "/api/profiles"), ("get", "/api/profiles/" + str(uuid4())),
     ("post", "/api/profiles/" + str(uuid4()) + "/appliances"),
     ("patch", "/api/appliances/" + str(uuid4())),
@@ -563,3 +564,22 @@ def test_json_text_must_be_representable_in_postgresql(signing, bad_text):
         result = client.post("/api/profiles", content=raw,
                              headers={**headers(signing), "Content-Type": "application/json"})
         assert_error(result, 422, "VALIDATION_ERROR")
+
+
+def test_native_profile_list_is_owned_paginated_and_validated(live, signing):
+    client, _ = live
+    owner = 'm6-list-' + uuid4().hex
+    other = 'm6-other-' + uuid4().hex
+    created = [profile(client, signing, owner, name=f'Profile {index}')[0] for index in range(3)]
+    foreign, _ = profile(client, signing, other)
+    first = client.get('/api/profiles?limit=2', headers=headers(signing, owner))
+    assert first.status_code == 200
+    validate('ProfileList', first.json())
+    assert len(first.json()['profiles']) == 2 and first.json()['next_cursor']
+    second = client.get('/api/profiles?limit=2&after=' + first.json()['next_cursor'], headers=headers(signing, owner))
+    assert second.status_code == 200 and second.json()['next_cursor'] is None
+    returned = first.json()['profiles'] + second.json()['profiles']
+    assert {item['id'] for item in returned} == {item['id'] for item in created}
+    assert foreign['id'] not in {item['id'] for item in returned}
+    for query in ('limit=0', 'limit=101', 'limit=2&limit=3', 'after=invalid', 'owner_id=' + str(uuid4())):
+        assert_error(client.get('/api/profiles?' + query, headers=headers(signing, owner)), 422, 'VALIDATION_ERROR')

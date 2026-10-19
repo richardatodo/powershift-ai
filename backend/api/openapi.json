@@ -356,6 +356,107 @@
             "BearerAuth": []
           }
         ]
+      },
+      "get": {
+        "tags": [
+          "Profiles"
+        ],
+        "summary": "List profiles owned by the verified principal.",
+        "description": "M6 additive operation supporting profile selection. Ordered by UUID, bounded keyset pagination, only owned profiles. A cursor conveys no authorization.",
+        "x-authentication-required": true,
+        "x-authentication-status": "Mechanism and credential transport unresolved; private operation activation is blocked pending identity/authorization design and verification.",
+        "operationId": "listProfiles",
+        "parameters": [
+          {
+            "name": "after",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "headers": {
+              "X-Request-ID": {
+                "required": true,
+                "description": "Opaque request correlation ID; error bodies contain the same request_id. Must not encode sensitive input.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "Cache-Control": {
+                "required": true,
+                "description": "Personal/error responses must not be cached.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "X-Contract-Version": {
+                "required": true,
+                "description": "Version of this API contract, independent of the unversioned /api URL.",
+                "schema": {
+                  "type": "string",
+                  "const": "0.1.0"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "description": "Temporarily unavailable service or authentication key retrieval.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/DefaultError"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/api/profiles/{profile_id}": {
@@ -2553,6 +2654,33 @@
           }
         },
         "description": "Immutable report. Calculation input values must agree with the input snapshot and only use eligible confirmed rows. Persisting a report is not a claim that its estimates are measured, that deployment exists, or that a retention policy has been approved."
+      },
+      "ProfileList": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "profiles",
+          "next_cursor"
+        ],
+        "properties": {
+          "profiles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProfileRead"
+            }
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
       }
     },
     "parameters": {
