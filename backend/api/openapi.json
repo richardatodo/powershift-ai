@@ -3,7 +3,7 @@
   "info": {
     "title": "PowerShift AI API",
     "version": "0.1.0",
-    "description": "M5 FastAPI service. RS256 JWT bearer authentication verifies a configured managed issuer, API audience, expiry and JWKS signature. PostgreSQL owner-scoped records and RLS protect private operations. Deterministic Python code is authoritative for arithmetic. Live scanning is disabled pending provider, consent, retention and budget decisions. No hosted deployment or live managed identity account is implied."
+    "description": "FastAPI owner-scoped API with deterministic arithmetic and optional local-only Ollama label extraction. Hosted image processing is disabled. Model accuracy and deployment readiness require separate verification."
   },
   "jsonSchemaDialect": "https://spec.openapis.org/oas/3.1/dialect/base",
   "servers": [
@@ -32,9 +32,9 @@
       "name": "Reports"
     }
   ],
-  "x-contract-status": "M5 implemented API; live scan success remains disabled.",
+  "x-contract-status": "M7 local-only scan implementation; production vision model not selected.",
   "x-authentication-gate": "Verified RS256 bearer JWT from configured issuer/API audience required for all operations except GET /api/status. Managed vendor remains selectable by configuration.",
-  "x-image-retention-gate": "Do not enable live scanning until upload notice/consent, retention/deletion, provider data terms, receipt isolation and configured usage limits have been approved and verified. No raw-image storage or retention mechanism is selected.",
+  "x-image-retention-gate": "Images are memory-only and sanitized before local processing. Candidates, evidence and consent remain in owned profile records until operator profile/account deletion. No automatic purge. Hosted processing is not approved.",
   "paths": {
     "/api/status": {
       "get": {
@@ -111,9 +111,9 @@
           "Scans"
         ],
         "summary": "Extract unconfirmed visible label candidates.",
-        "description": "Validates principal/profile ownership, explicit upload consent, outer JSON media type, one decoded image, configured limits and provider readiness before extraction. Missing/invalid imageDataUrl, including schema type/pattern failure or corrupt decoded image, is 400 INVALID_IMAGE as an endpoint-specific exception to generic 422 validation; configured oversize remains 400 IMAGE_TOO_LARGE. Invalid non-image profile/consent fields are 422. consent.notice_version must match the active approved notice; an unknown version is 422 VALIDATION_ERROR with INVALID_PROVENANCE detail. Unconfigured notice, provider or required privacy/scanning prerequisites yield 503 SCANNER_UNAVAILABLE. Server-held provider secrets only. Candidate receipt/expiry define linkage semantics without choosing storage or retention. Live scans are blocked until consent wording, provider terms, retention/deletion, receipt isolation, timeouts, quotas and authentication are approved and verified. Never save/confirm an appliance. Preserve blueprint imageDataUrl, result, watts and requiresConfirmation keys; added profile_id/consent/scan receipt fields are M2 refinements.",
+        "description": "Local-only configurable Ollama extraction. Never creates an appliance. Requires explicit versioned local-processing consent, validated JPEG/PNG/WebP, owned profile and configured usage limits. Invalid images return 400, oversized HTTP bodies 413, invalid consent fields 422, unavailable local model 503, invalid output 502 and timeout 504. Candidate receipt is owner-scoped, expires after the configured interval, and is consumed only by a separate confirmed appliance write. Hosted processing is disabled.",
         "x-authentication-required": true,
-        "x-authentication-status": "Mechanism and credential transport unresolved; private operation activation is blocked pending identity/authorization design and verification.",
+        "x-authentication-status": "Verified RS256 bearer token and owner-scoped profile required.",
         "operationId": "scanLabel",
         "requestBody": {
           "required": true,
@@ -1250,7 +1250,7 @@
           "Reports"
         ],
         "summary": "Export an immutable owned report as CSV.",
-        "description": "Export saved report inputs/results, preserving the same calculation values and incomplete-record information shown by the report. text/csv success; application/json stable errors. Exact column order: report_id,estimate,appliance_id,name,quantity,rated_watts,hours_per_day,effective_load_percent,source_method,source_status,calculation_status,daily_kwh,period_days,period_kwh,rate_ngn_per_kwh,tariff_provenance,grid_equivalent_cost_ngn,cost_basis,assumptions,exclusion_codes. estimate is literal true. cost_basis is grid_equivalent when tariff is present, otherwise empty. assumptions repeats the saved report assumptions joined with semicolons. Unknown numeric inputs and ineligible row energy/cost cells are empty; retain known input values. Use UTF-8, correct CSV quoting and spreadsheet-formula escaping of user-controlled text without modifying saved domain values. Full CSV/print behavior is specified in the prose contract; no live export implementation is claimed.",
+        "description": "Export saved report inputs/results, preserving the same calculation values and incomplete-record information shown by the report. text/csv success; application/json stable errors. Exact column order: report_id,estimate,appliance_id,name,quantity,rated_watts,hours_per_day,effective_load_percent,source_method,source_status,calculation_status,daily_kwh,period_days,period_kwh,rate_ngn_per_kwh,tariff_provenance,grid_equivalent_cost_ngn,cost_basis,assumptions,exclusion_codes. estimate is literal true. cost_basis is grid_equivalent when tariff is present, otherwise empty. assumptions repeats the saved report assumptions joined with semicolons. Unknown numeric inputs and ineligible row energy/cost cells are empty; retain known input values. Use UTF-8, correct CSV quoting and spreadsheet-formula escaping of user-controlled text without modifying saved domain values. CSV is implemented from the immutable saved snapshot. The authenticated React report view supplies print-friendly reporting.",
         "x-authentication-required": true,
         "x-authentication-status": "Mechanism and credential transport unresolved; private operation activation is blocked pending identity/authorization design and verification.",
         "operationId": "exportReportCsv",
@@ -1612,6 +1612,34 @@
           "imageScanningConfigured": {
             "type": "boolean",
             "description": "Configuration capability flag only; true is not evidence of provider reachability, verified extraction, or launch readiness."
+          },
+          "scanNotice": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "version",
+              "text",
+              "maxImageBytes",
+              "timeoutSeconds"
+            ],
+            "properties": {
+              "version": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              },
+              "maxImageBytes": {
+                "type": "integer",
+                "minimum": 1024,
+                "maximum": 5242880
+              },
+              "timeoutSeconds": {
+                "type": "integer",
+                "minimum": 5,
+                "maximum": 300
+              }
+            }
           }
         }
       },
@@ -2161,7 +2189,7 @@
             "$ref": "#/components/schemas/UploadConsent"
           }
         },
-        "description": "The authenticated principal must own the profile. Transport image data and provider output are untrusted. Missing/invalid imageDataUrl, including missing key, schema type/pattern failure or corrupt decoded image, maps to 400 INVALID_IMAGE rather than generic 422; configured oversize maps to 400 IMAGE_TOO_LARGE. Invalid non-image profile/consent fields map to 422. consent.notice_version must equal the active approved notice; unknown versions produce 422 VALIDATION_ERROR with INVALID_PROVENANCE detail. If the notice, provider or required privacy/scanning prerequisites are unconfigured, return 503 SCANNER_UNAVAILABLE. Profile linkage and explicit consent refine the blueprint request. Limits, provider configuration, retention/deletion and receipt mechanism remain launch gates."
+        "description": "Local-only configurable Ollama extraction. Never creates an appliance. Requires explicit versioned local-processing consent, validated JPEG/PNG/WebP, owned profile and configured usage limits. Invalid images return 400, oversized HTTP bodies 413, invalid consent fields 422, unavailable local model 503, invalid output 502 and timeout 504. Candidate receipt is owner-scoped, expires after the configured interval, and is consumed only by a separate confirmed appliance write. Hosted processing is disabled."
       },
       "ScanCandidate": {
         "type": "object",
@@ -2179,13 +2207,43 @@
         ],
         "properties": {
           "name": {
-            "$ref": "#/components/schemas/NullableText"
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200,
+                "pattern": "^\\S(?:[\\s\\S]*\\S)?$(?![\\s\\S])"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "brand": {
-            "$ref": "#/components/schemas/NullableText"
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200,
+                "pattern": "^\\S(?:[\\s\\S]*\\S)?$(?![\\s\\S])"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "model": {
-            "$ref": "#/components/schemas/NullableText"
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200,
+                "pattern": "^\\S(?:[\\s\\S]*\\S)?$(?![\\s\\S])"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "watts": {
             "anyOf": [
@@ -2204,7 +2262,8 @@
               {
                 "type": "string",
                 "minLength": 1,
-                "pattern": "^\\S(?:[\\s\\S]*\\S)?$(?![\\s\\S])"
+                "pattern": "^\\S(?:[\\s\\S]*\\S)?$(?![\\s\\S])",
+                "maxLength": 200
               },
               {
                 "type": "null"
@@ -2216,7 +2275,8 @@
               {
                 "type": "string",
                 "minLength": 1,
-                "pattern": "^\\S(?:[\\s\\S]*\\S)?$(?![\\s\\S])"
+                "pattern": "^\\S(?:[\\s\\S]*\\S)?$(?![\\s\\S])",
+                "maxLength": 200
               },
               {
                 "type": "null"
@@ -2236,10 +2296,12 @@
             ]
           },
           "notes": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 2000
           },
           "visible_evidence": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 2000
           }
         },
         "description": "Candidates contain visible evidence only. All missing/ambiguous fields are null, not empty strings, zero or guesses. Keep VA/current/voltage evidence explicit in notes/evidence; no automatic VA to W conversion. Never extract usage quantity, runtime or load percentage from a rating label."

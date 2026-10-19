@@ -5,6 +5,8 @@ import { useAuth } from './auth';
 import { Button, EmptyState, ErrorNotice, Field, Modal, submitFocus } from './components';
 import { ApplianceEditor } from './ApplianceEditor';
 import { numberError } from './forms';
+import { ReportLauncher, ReportPage } from './Reports';
+import { reportId } from './reporting';
 import { energy, sectors, text, type Appliance, type Assessment, type Profile, type Sector, type Workspace } from './types';
 
 function Brand() { return <a className="brand" href="/" aria-label="PowerShift AI home"><span className="brand-mark"><Zap size={23} fill="currentColor" /></span><span>PowerShift<span className="brand-ai">AI</span></span></a>; }
@@ -82,14 +84,14 @@ function EnergyBreakdown({ rows, assessment }: { rows: Appliance[]; assessment: 
   </section>;
 }
 
-function Dashboard() {
+function Dashboard({ openReport, initialProfileId, initialParameters }: { openReport: (id: string, changed: boolean, profileId: string) => void; initialProfileId?: string; initialParameters?: {days: string; tariff: string} }) {
   const { api, signOut } = useAuth();
-  const [profiles, setProfiles] = useState<Profile[]>([]), [cursor, setCursor] = useState<string | null>(null), [selected, setSelected] = useState('');
+  const [profiles, setProfiles] = useState<Profile[]>([]), [cursor, setCursor] = useState<string | null>(null), [selected, setSelected] = useState(initialProfileId || '');
   const [workspace, setWorkspace] = useState<Workspace | null>(null), [assessment, setAssessment] = useState<Assessment | null>(null);
   const [pageLoading, setPageLoading] = useState(true), [loading, setLoading] = useState(false), [failure, setFailure] = useState<unknown>(null);
   const [revision, setRevision] = useState(0), [listRevision, setListRevision] = useState(0), [notice, setNotice] = useState('');
   const [profileModal, setProfileModal] = useState(false), [editor, setEditor] = useState<Appliance | 'new' | null>(null), [removing, setRemoving] = useState<Appliance | null>(null), [deleting, setDeleting] = useState(false), [deleteError, setDeleteError] = useState<unknown>(null);
-  const [parameters, setParameters] = useState({ days: '30', tariff: '' }), [filter, setFilter] = useState('all'), [search, setSearch] = useState('');
+  const [parameters, setParameters] = useState(initialParameters || { days: '30', tariff: '' }), [filter, setFilter] = useState('all'), [search, setSearch] = useState('');
   const listRef = useRef<HTMLElement>(null), addRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     const controller = new AbortController(); setPageLoading(true); setFailure(null);
@@ -144,6 +146,7 @@ function Dashboard() {
         : !profiles.length && !failure ? <EmptyState kind="profiles" action={() => setProfileModal(true)} /> : <>
           {current && <EstimateSettings key={selected} applied={parameters} disabled={loading || !workspace} apply={value => { setAssessment(null); setParameters(value); }} />}
           <Metrics assessment={assessment} days={parameters.days} loading={loading} />
+          {workspace && assessment && <ReportLauncher key={`${selected}:${revision}:${parameters.days}:${parameters.tariff}`} api={api} profileId={selected} parameters={parameters} assessment={assessment} open={(id, changed) => openReport(id, changed, selected)} />}
           {incomplete > 0 && <div className="notice warning incomplete-banner"><Info size={20} /><div><strong>{incomplete} {incomplete === 1 ? 'appliance needs' : 'appliances need'} a little more detail.</strong><p>Unknown ratings or usage stay out of the totals. They’re never treated as zero.</p></div><button className="text-button" onClick={showIncomplete}>Review incomplete <ArrowRight size={16} /></button></div>}
           {assessment && text(assessment.counts.eligible) === '0' && <p className="no-estimate"><Info size={15} />No complete, confirmed appliances are available for an estimate yet.</p>}
           <div className="insights-grid"><EnergyBreakdown rows={rows} assessment={assessment} /><InputsGuide /></div>
@@ -160,9 +163,24 @@ function Dashboard() {
     {removing && <Modal title="Delete this appliance?" close={() => setRemoving(null)} busy={deleting}><p className="form-intro"><strong>{removing.name}</strong> will be removed from this profile and future estimates. Previously saved reports keep their original snapshot.</p>{deleteError != null && <ErrorNotice error={deleteError} retry={deleteError instanceof ApiError && deleteError.code === 'STALE_VERSION' ? reload : undefined} />}<div className="modal-footer"><Button className="secondary" onClick={() => setRemoving(null)} disabled={deleting}>Keep appliance</Button><Button className="destructive" onClick={() => void deleteAppliance()} disabled={deleting}><Trash2 size={16} />{deleting ? 'Deleting…' : 'Delete appliance'}</Button></div></Modal>}
   </div>;
 }
+function WorkspaceRouter() {
+  const { api } = useAuth();
+  const [route, setRoute] = useState<{id: string | null; changed: boolean; profileId?: string; parameters?: {days: string; tariff: string}}>(() => ({ id: reportId(), changed: false }));
+  useEffect(() => {
+    const update = () => setRoute({ id: reportId(), changed: false });
+    window.addEventListener('popstate', update); return () => window.removeEventListener('popstate', update);
+  }, []);
+  function navigate(id: string | null, changed = false, profileId?: string, parameters?: {days: string; tariff: string}) {
+    history.pushState(null, '', id ? '/?report=' + encodeURIComponent(id) : '/');
+    setRoute({ id, changed, profileId, parameters }); window.scrollTo(0, 0);
+  }
+  return route.id ? <ReportPage key={route.id} api={api} id={route.id} changed={route.changed} back={saved => navigate(null, false, saved?.profile_id || route.profileId,
+    saved ? {days:text(saved.calculation.period_days),tariff:text(saved.calculation.rate_ngn_per_kwh)} : undefined)} />
+    : <Dashboard initialProfileId={route.profileId} initialParameters={route.parameters} openReport={(id, changed, profileId) => navigate(id, changed, profileId)} />;
+}
 export default function App() {
   const auth = useAuth();
   const identity = useMemo(() => auth.user ? `${auth.user.profile.iss}:${auth.user.profile.sub}` : '', [auth.user]);
   if (!auth.ready) return <div className="app-opening" role="status"><Zap className="spin" />Opening PowerShift…</div>;
-  return auth.user ? <Dashboard key={identity} /> : <Landing />;
+  return auth.user ? <WorkspaceRouter key={identity} /> : <Landing />;
 }

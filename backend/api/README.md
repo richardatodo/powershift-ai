@@ -1,8 +1,9 @@
 # FastAPI service
 
 M5 implements the reviewed `/api` contract with PostgreSQL persistence and RS256
-bearer JWT authentication. Only `GET /api/status` is public. Scanning returns
-unavailable; no upload/provider calls are performed.
+bearer JWT authentication. Only `GET /api/status` is public. M7 adds optional
+local-only Ollama label scanning; it is disabled until explicitly configured.
+Hosted image processing is not implemented or approved.
 
 ## Install and configure
 
@@ -87,8 +88,9 @@ are disabled by default.
 - Calculations: authenticated strict JSON passed to the unchanged M3 engine.
 - Reports: compute from one REPEATABLE READ owned snapshot, save exact inputs
   and output, retrieve immutable history and export that history as CSV.
-- Scan: authenticate, validate request/profile scope and return
-  `503 SCANNER_UNAVAILABLE` until separate integration gates are approved.
+- Scan: optional local-only Ollama extraction with consent, validated images,
+  scoped candidate receipts and separate confirmation. Disabled by default;
+  see [local scan configuration](SCANNING.md). Hosted processing is disabled.
 
 Unknown/server-owned fields, duplicate JSON keys, numeric strings, boolean
 numbers and nonfinite numbers are rejected. Exact Decimal values reach

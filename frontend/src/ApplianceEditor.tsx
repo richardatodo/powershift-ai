@@ -2,7 +2,8 @@ import { useRef, useState, type FormEvent } from 'react';
 import { Check, Info, Save } from 'lucide-react';
 import { ApiError, type Api } from './api';
 import { appliancePayload, blankAppliance, fromAppliance, suggestions, validateAppliance, type ApplianceForm, type FieldErrors } from './forms';
-import type { Appliance, Profile } from './types';
+import { text, type Appliance, type Profile, type ScanResponse } from './types';
+import { LabelScanner } from './LabelScanner';
 import { Button, ErrorNotice, Field, Modal, submitFocus } from './components';
 
 export function ApplianceEditor({ api, profile, original, close, saved, reload }: {
@@ -12,13 +13,15 @@ export function ApplianceEditor({ api, profile, original, close, saved, reload }
   const [confirmed, setConfirmed] = useState(false), [errors, setErrors] = useState<FieldErrors>({});
   const [failure, setFailure] = useState<unknown>(null), [busy, setBusy] = useState(false);
   const key = useRef(crypto.randomUUID());
+  const [scan, setScan] = useState<ScanResponse | null>(null);
+  const [scanBusy, setScanBusy] = useState(false);
   function change(name: keyof ApplianceForm, value: string) { setForm(previous => ({ ...previous, [name]: value })); setConfirmed(false); setErrors({}); }
   async function submit(event: FormEvent) {
     const errors = validateAppliance(form, confirmed); submitFocus(event, errors); setErrors(errors);
-    if (Object.keys(errors).length || busy) return;
+    if (Object.keys(errors).length || busy || scanBusy) return;
     setBusy(true); setFailure(null);
     try {
-      const payload = appliancePayload(form, confirmed, original);
+      const payload = appliancePayload(form, confirmed, original, scan?.scan_id);
       await api.saveAppliance(profile.id, original ? payload : { ...payload, client_request_id: key.current }, original);
       saved(form.name.trim());
     } catch (error) {
@@ -27,8 +30,21 @@ export function ApplianceEditor({ api, profile, original, close, saved, reload }
     } finally { setBusy(false); }
   }
   const unknown = ['rated_watts', 'hours_per_day', 'effective_load_percent'].filter(field => !form[field as keyof ApplianceForm].trim()).length;
-  return <Modal title={original ? 'Edit appliance' : 'Add an appliance'} close={close} busy={busy}>
-    <form onSubmit={submit} noValidate aria-busy={busy}><fieldset disabled={busy}>
+  return <Modal title={original ? 'Edit appliance' : 'Add an appliance'} close={close} busy={busy || scanBusy}>
+    {!original && !scan && <div inert={busy || undefined}><LabelScanner api={api} profileId={profile.id} busyChanged={setScanBusy} received={result => {
+      setScan(result); setConfirmed(false); setErrors({}); setFailure(null);
+      setForm(previous => ({ ...previous, name: result.result.name || '', brand: result.result.brand || '',
+        model: result.result.model || '', rated_watts: text(result.result.watts),
+        source_method: 'ai_label_extraction', source_notes: result.result.notes }));
+    }} /></div>}
+    {scan && <div className="notice warning"><div><strong>Review every extracted value before saving.</strong>
+      <p>{scan.result.notes}</p><p>Visible evidence: {scan.result.visible_evidence || 'No readable label evidence.'}</p>
+      <p>Voltage: {scan.result.voltage || 'Unknown'} · Current: {scan.result.current || 'Unknown'} · Label energy: {scan.result.kwh_per_day == null ? 'Unknown' : text(scan.result.kwh_per_day) + ' kWh/day (label evidence only)'}</p>
+      <p>These are model suggestions. Usage hours and effective load still need your input. This scan expires at {new Date(scan.expires_at).toLocaleString()}.</p>
+      <button type="button" className="text-button" disabled={busy} onClick={() => {
+        setScan(null); setConfirmed(false); setForm(previous => ({ ...previous, name: '', brand: '', model: '', rated_watts: '', source_notes: '', source_method: 'manual' }));
+      }}>Discard scan and enter manually</button></div></div>}
+    <form onSubmit={submit} noValidate aria-busy={busy || scanBusy}><fieldset disabled={busy || scanBusy}>
       <p className="form-intro">Use the rating on your appliance and your own usage estimate. Leave anything you don’t know blank.</p>
       {failure != null && <ErrorNotice error={failure} retry={failure instanceof ApiError && ['STALE_VERSION', 'IDEMPOTENCY_CONFLICT'].includes(failure.code) ? reload : undefined} />}
       <Field name="name" label="Appliance name" value={form.name} onChange={e => change('name', e.target.value)} error={errors.name} autoFocus maxLength={200} autoComplete="off" />

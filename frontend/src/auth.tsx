@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { UserManager, WebStorageStateStore, type User } from 'oidc-client-ts';
 import { Api } from './api';
+import { reportPath } from './reporting';
 
 const authority = import.meta.env.VITE_OIDC_AUTHORITY as string | undefined;
 const clientId = import.meta.env.VITE_OIDC_CLIENT_ID as string | undefined;
@@ -44,7 +45,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (location.pathname === '/auth/callback') {
           const next = await client.signinRedirectCallback();
           if (active) loaded(next);
-          history.replaceState(null, '', '/');
+          history.replaceState(null, '', reportPath((next.state as { returnTo?: unknown } | undefined)?.returnTo));
         } else if (location.pathname === '/auth/signout-callback') {
           await client.signoutRedirectCallback(); history.replaceState(null, '', '/');
         } else if (location.pathname === '/auth/silent-callback') {
@@ -62,7 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [client]);
   async function signIn() {
     setError('');
-    try { await client?.signinRedirect(); } catch { setError('We could not open sign-in. Please try again.'); }
+    try { await client?.signinRedirect({ state: { returnTo: reportPath(location.pathname + location.search) } }); } catch { setError('We could not open sign-in. Please try again.'); }
   }
   async function signOut() {
     setUser(null);

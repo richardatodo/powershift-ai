@@ -6,6 +6,12 @@ dashboard. No client code computes kWh or tariff cost: results come from M3
 through the authenticated FastAPI API. Browser arithmetic is limited to input
 range validation and visual bar proportions.
 
+The appliance editor also supports optional local label scanning: preview a
+photo, consent to local processing, review/edit candidates and explicitly save.
+Unknown power/usage stays blank. Manual entry works when scanning is disabled
+or unavailable. See [local scan setup](../backend/api/SCANNING.md); hosted image
+processing is disabled and no production vision model has been selected.
+
 ## Run locally
 
 Node 24.21.0/npm 11.19.0 were verified; the package requires Node 22.12+.
@@ -122,8 +128,8 @@ npm.cmd --prefix frontend run test:e2e
 
 Never point native tests at a cluster containing valuable data. The fixture
 refuses existing reserved roles, creates a generated database/restricted login,
-and runs real FastAPI/PostgreSQL. It signs an ephemeral RSA token and mocks only
-the external JWKS response; production JWT verification is not bypassed. The
+and runs real FastAPI/PostgreSQL. It signs an ephemeral RSA token and mocks
+the external JWKS response and local-model transport; production JWT verification is not bypassed. The
 session fixture is a generated TEMP file, never a browser bundle feature.
 Playwright supplies an existing OIDC session to the test browser. Redirect/PKCE
 checks intercept a synthetic IdP; a real provider was not contacted.
@@ -137,4 +143,34 @@ Test artifacts/traces, dependencies, builds and local env files are ignored by
 `frontend/.gitignore`. The root `.gitignore` remains unchanged. Chromium desktop,
 390px and 320px layouts are covered; Firefox/Safari and live OIDC are unverified.
 Accessibility checks cover automated axe rules and keyboard dialogs, not a full
-WCAG certification. Scanning and report/CSV/print UI remain later milestones.
+WCAG certification. Local scan transport is mocked in browser tests; real-model
+accuracy remains a separate M7 gate.
+
+## Reports and exports
+
+Use **Save report** after applying the dashboard period and optional tariff.
+The server captures every stored appliance in the profile, including incomplete
+rows, independently of the current search/filter. Reports show period totals,
+saved appliance inputs and daily/period breakdowns, exclusion warnings and all
+calculation assumptions. No browser arithmetic recomputes energy or costs.
+
+The report opens at `/?report=<uuid>`. Bookmark its URL to reopen it with an
+authorized account. Sign-in preserves valid report return URLs; other return
+paths are discarded. A report reflects the captured snapshot even after later
+appliance edits. If server capture differs from the dashboard preview, a notice
+explains that the report uses the latest saved inputs. Back to dashboard restores
+the report's profile, reporting period and tariff using current appliance values.
+
+**Download CSV** fetches the saved report through authenticated `fetch`, validates
+the response media type and downloads the server-produced UTF-8 file. It includes
+the contracted 20 columns, assumptions, provenance and exclusion codes. Excluded
+energy/cost cells are blank; known zero values remain zero. Empty snapshots
+export the header only. Formula escaping applies only to the export, preserving
+stored names. Rounded rows need not visually sum to independently rounded totals.
+
+**Print report** opens the browser print dialog. Dedicated A4 print CSS hides
+controls, shows metadata/inputs/warnings/assumptions, repeats table headers and
+allows long reports to paginate. Browser print settings can also save a PDF;
+no server-side PDF-generation endpoint is provided. Physical printer output and
+Firefox/Safari print layouts have not been verified. Saved-report listing and
+self-service report deletion are not implemented; access uses the saved URL.

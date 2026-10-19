@@ -32,6 +32,174 @@ async function save(page: Page) {
   await expect(page.getByRole('dialog')).not.toBeVisible();
 }
 
+test('saved reports agree with dashboard, export CSV and remain unchanged after edits', async ({page}) => {
+  await newProfile(page,'Report home');
+  await editor(page);
+  await page.getByLabel('Appliance name',{exact:true}).fill('=Fan, "quoted"');
+  await page.getByLabel('Rated power (W)',{exact:true}).fill('100');
+  await page.getByLabel('Hours used per day',{exact:true}).fill('5');
+  await page.getByLabel('Effective load (%)',{exact:true}).fill('50');
+  await save(page);
+  await editor(page);await page.getByLabel('Appliance name',{exact:true}).fill('Incomplete refrigerator');await save(page);
+  await page.getByLabel('Period (days)',{exact:true}).fill('7');
+  await page.getByLabel('Tariff (₦ / kWh) · optional',{exact:true}).fill('100');
+  await page.getByRole('button',{name:'Update estimate',exact:true}).click();
+  await expect(page.getByRole('article',{name:'Daily energy',exact:true})).toContainText('0.25');
+  await expect(page.getByRole('article',{name:'7-day energy',exact:true})).toContainText('1.75');
+  await expect(page.getByRole('article',{name:'Grid-equivalent cost',exact:true})).toContainText('175.00');
+  await page.getByRole('button',{name:'Needs details',exact:false}).click();
+  const capture=page.waitForResponse(response => response.url().endsWith('/api/reports') && response.request().method()==='POST');
+  await page.getByRole('button',{name:'Save report',exact:true}).click();
+  const saved=await (await capture).json();
+  await expect(page).toHaveURL(new RegExp('report='+saved.id));
+  await expect(page.getByRole('article',{name:'Report daily energy',exact:true})).toContainText('0.25');
+  await expect(page.getByRole('article',{name:'Report period energy',exact:true})).toContainText('1.75');
+  await expect(page.getByRole('article',{name:'Report grid-equivalent cost',exact:true})).toContainText('175.00');
+  await expect(page.getByRole('table')).toContainText('=Fan, "quoted"');
+  await expect(page.getByRole('table')).toContainText('Incomplete refrigerator');
+  await expect(page.getByRole('region',{name:'Warnings & exclusions',exact:true})).toContainText('INCOMPLETE_RECORDS');
+  await expect(page.getByRole('region',{name:'Assumptions & boundaries',exact:true})).toContainText('not measured');
+  const downloaded=page.waitForEvent('download');
+  await page.getByRole('button',{name:'Download CSV',exact:true}).click();
+  const file=await downloaded;expect(file.suggestedFilename()).toBe(`powershift-${saved.id}.csv`);
+  const csv=readFileSync((await file.path())!,'utf8');
+  expect(csv.split('\r\n')[0]?.split(',')).toHaveLength(20);
+  expect(csv).toContain("'=Fan");expect(csv).toContain('MISSING_VALUE');expect(csv).toContain('1.750000');expect(csv).toContain('175.00');
+  const a11y=await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21aa']).analyze();expect(a11y.violations).toEqual([]);
+  await page.screenshot({path:'test-results/m8-report-desktop.png',fullPage:true});
+  await page.setViewportSize({width:390,height:844});
+  expect(await page.evaluate(() => document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  const mobileAudit=await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21aa']).analyze();expect(mobileAudit.violations).toEqual([]);
+  await page.getByRole('region',{name:'Saved appliance details',exact:true}).focus();
+  await page.keyboard.press('ArrowRight');
+  await page.setViewportSize({width:320,height:700});
+  expect(await page.evaluate(() => document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await page.setViewportSize({width:390,height:844});
+  await page.screenshot({path:'test-results/m8-report-mobile.png',fullPage:true});
+  await page.emulateMedia({media:'print'});
+  await expect(page.getByRole('navigation',{name:'Report actions',exact:true})).not.toBeVisible();
+  await expect(page.getByRole('region',{name:'Assumptions & boundaries',exact:true})).toBeVisible();
+  await page.setViewportSize({width:794,height:1123});
+  expect(await page.getByRole('table').evaluate(table => table.scrollWidth<=table.clientWidth+1)).toBe(true);
+  await page.screenshot({path:'test-results/m8-report-print.png',fullPage:true});
+  await page.emulateMedia({media:'screen'});await page.setViewportSize({width:1280,height:900});
+  const reportUrl=page.url();await page.reload();
+  await expect(page.getByRole('article',{name:'Report period energy',exact:true})).toContainText('1.75');
+  await page.getByRole('button',{name:'Back to dashboard',exact:true}).click();
+  await expect(page.getByLabel('Period (days)',{exact:true})).toHaveValue('7');
+  await expect(page.getByLabel('Tariff (₦ / kWh) · optional',{exact:true})).toHaveValue('100');
+  await page.getByRole('button',{name:'Edit =Fan, "quoted"',exact:true}).click();
+  await page.getByLabel('Rated power (W)',{exact:true}).fill('200');
+  await page.getByLabel('I reviewed the values above',{exact:false}).check();
+  await page.getByRole('button',{name:'Save changes',exact:true}).click();
+  await expect(page.getByRole('dialog')).not.toBeVisible();
+  await expect(page.getByRole('article',{name:'Daily energy',exact:true})).toContainText('0.5');
+  await page.goto(reportUrl);
+  await expect(page.getByRole('article',{name:'Report daily energy',exact:true})).toContainText('0.25');
+});
+
+test('empty report, retry request key, print action and missing report handling',async({page}) => {
+  await newProfile(page,'Empty report home');
+  const keys:string[]=[];let attempts=0;
+  await page.route('**/api/reports',async route => {
+    keys.push(route.request().postDataJSON().client_request_id);attempts++;
+    if(attempts===1) await route.abort('failed');else await route.continue();
+  });
+  await page.getByRole('button',{name:'Save report',exact:true}).click();
+  await expect(page.getByRole('alert')).toContainText('Check your connection');
+  await page.getByRole('button',{name:'Save report',exact:true}).click();
+  await expect(page.getByText('No appliances were saved in this snapshot.',{exact:false})).toBeVisible();
+  expect(keys).toHaveLength(2);expect(keys[0]).toBe(keys[1]);
+  await expect(page.getByRole('article',{name:'Report grid-equivalent cost',exact:true})).toContainText('Not estimated');
+  await page.evaluate(() => { (window as Window & {printed?:boolean}).printed=false;window.print=()=>{(window as Window & {printed?:boolean}).printed=true;}; });
+  await page.getByRole('button',{name:'Print report',exact:true}).click();
+  expect(await page.evaluate(()=>(window as Window & {printed?:boolean}).printed)).toBe(true);
+  await page.goto('/?report=11111111-1111-4111-8111-111111111111');
+  await expect(page.getByRole('alert')).toContainText('The resource was not found.');
+  await expect(page.getByRole('button',{name:'Download CSV',exact:true})).not.toBeVisible();
+});
+
+test('report capture detects concurrent edits and CSV rejection clears private report UI',async({page})=>{
+  await newProfile(page,'Concurrent report home');
+  await editor(page);await page.getByLabel('Appliance name',{exact:true}).fill('Concurrent fan');
+  await page.getByLabel('Rated power (W)',{exact:true}).fill('100');await page.getByLabel('Hours used per day',{exact:true}).fill('1');
+  await page.getByLabel('Effective load (%)',{exact:true}).fill('100');await save(page);
+  const session=JSON.parse(readFileSync(process.env.POWERSHIFT_BROWSER_SESSION_FILE!,'utf8'));
+  const profiles=await page.request.get('/api/profiles',{headers:{Authorization:'Bearer '+session.user.access_token}});
+  const savedProfile=(await profiles.json()).profiles.find((profile:{name:string})=>profile.name==='Concurrent report home');
+  const workspace=await page.request.get('/api/profiles/'+savedProfile.id,{headers:{Authorization:'Bearer '+session.user.access_token}});
+  const appliance=(await workspace.json()).appliances[0];
+  const edited=await page.request.patch('/api/appliances/'+appliance.id,{headers:{Authorization:'Bearer '+session.user.access_token},data:{rated_watts:200,version:appliance.version,confirmation:true}});
+  expect(edited.status()).toBe(200);
+  await page.getByRole('button',{name:'Save report',exact:true}).click();
+  await expect(page.getByText('The profile changed since the dashboard estimate.',{exact:false})).toBeVisible();
+  await expect(page.getByRole('article',{name:'Report daily energy',exact:true})).toContainText('0.2');
+  await page.route('**/export.csv',route=>route.fulfill({status:401,contentType:'text/plain',body:'Unauthorized'}));
+  await page.getByRole('button',{name:'Download CSV',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'Understand the energy',exact:false})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Energy estimate report',exact:true})).not.toBeVisible();
+});
+
+test('local scan consent, editable unconfirmed candidates and explicit save', async ({ page }) => {
+  await newProfile(page, 'Scan browser home');
+  await editor(page);
+  await page.getByRole('button', { name: 'Read an appliance label', exact: true }).click();
+  // Generated 2x2 PNG; local-model transport is mocked by browser_server.py.
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAE0lEQVR4nGP8//8/AwMDEwMYAAAkBgMBXaJOiAAAAABJRU5ErkJggg==', 'base64');
+  await page.getByLabel('Label photo', { exact: false }).setInputFiles({name:'synthetic.png',mimeType:'image/png',buffer:png});
+  await expect(page.getByRole('button', { name: 'Extract label values', exact: true })).toBeDisabled();
+  await page.getByLabel('I agree to the local photo processing', { exact: false }).check();
+  await page.getByRole('button', { name: 'Extract label values', exact: true }).click();
+  await expect(page.getByText('Review every extracted value before saving.', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('Appliance name', {exact:true})).toHaveValue('Scanned fan');
+  await expect(page.getByLabel('Rated power (W)', {exact:true})).toHaveValue('60');
+  await expect(page.getByLabel('Hours used per day', {exact:true})).toHaveValue('');
+  await expect(page.getByLabel('Effective load (%)', {exact:true})).toHaveValue('');
+  await expect(page.getByLabel('I reviewed the values above', { exact: false })).not.toBeChecked();
+  await page.getByRole('button', {name:'Save appliance',exact:true}).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.getByLabel('Appliance name',{exact:true}).fill('Reviewed scan fan');
+  await page.getByLabel('Hours used per day',{exact:true}).fill('5');
+  await page.getByLabel('Effective load (%)',{exact:true}).fill('50');
+  const a11y = await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21aa']).analyze();
+  expect(a11y.violations).toEqual([]);
+  await page.getByRole('dialog').evaluate(dialog => { dialog.scrollTop=0; });
+  await page.getByRole('dialog').screenshot({path:'test-results/scan-review.png'});
+  await save(page);
+  await expect(page.getByRole('article',{name:'Daily energy',exact:true})).toContainText('0.15');
+  await page.getByRole('button',{name:'Edit Reviewed scan fan',exact:true}).click();
+  await expect(page.getByLabel('Rated power (W)',{exact:true})).toHaveValue('60');
+});
+
+test('scan unavailable retains manual entry and does not submit without consent', async ({ page }) => {
+  await newProfile(page, 'Manual scan fallback');
+  await page.route('**/api/status', route => route.fulfill({status:200,contentType:'application/json',body:'{"imageScanningConfigured":false}'}));
+  await editor(page);
+  await page.getByRole('button',{name:'Read an appliance label',exact:true}).click();
+  await expect(page.getByText('Label scanning is not configured.',{exact:false})).toBeVisible();
+  await page.getByLabel('Appliance name',{exact:true}).fill('Manual fallback fan');
+  await page.getByLabel('Rated power (W)',{exact:true}).fill('60');
+  await save(page);
+  await expect(page.getByRole('button',{name:'Edit Manual fallback fan',exact:true})).toBeVisible();
+});
+
+for (const status of [502, 503]) test(`scan failure ${status} preserves the manual fallback`, async ({ page }) => {
+  await newProfile(page, `Scan failure ${status}`);
+  await page.route('**/api/scan', route => route.fulfill({status,contentType:'application/json',body:JSON.stringify({error:{
+    code:status===503?'SCANNER_UNAVAILABLE':'INVALID_SCAN_RESULT',message:'Local scanning failed. Enter values manually.',details:[],request_id:'browser-scan-failure'}})}));
+  await editor(page);
+  await page.getByRole('button',{name:'Read an appliance label',exact:true}).click();
+  await page.getByLabel('Label photo',{exact:false}).setInputFiles({name:'synthetic.png',mimeType:'image/png',
+    buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAE0lEQVR4nGP8//8/AwMDEwMYAAAkBgMBXaJOiAAAAABJRU5ErkJggg==','base64')});
+  await page.getByLabel('I agree to the local photo processing',{exact:false}).check();
+  await page.getByRole('button',{name:'Extract label values',exact:true}).click();
+  await expect(page.getByRole('alert')).toContainText('Local scanning failed. Enter values manually.');
+  await page.getByRole('button',{name:'Continue manually',exact:true}).click();
+  await page.getByLabel('Appliance name',{exact:true}).fill('Fallback after model failure');
+  await save(page);
+  await expect(page.getByRole('button',{name:'Edit Fallback after model failure',exact:true})).toBeVisible();
+});
+
 test('complete manual journey, incomplete warnings, editing, deletion and profile selection', async ({ page }) => {
   await newProfile(page, 'Browser home');
   const dialog = await editor(page);

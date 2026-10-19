@@ -7,7 +7,7 @@ from uuid import UUID
 from psycopg.types.json import Jsonb
 
 from backend.calculations import calculate_assessment, evaluate_appliance, dumps_assessment
-from .errors import missing, conflict
+from .errors import APIError, missing, conflict
 from .validation import CONTRACT, fingerprint, validate
 
 INPUT_FIELDS = ("name", "quantity", "rated_watts", "hours_per_day", "effective_load_percent",
@@ -54,6 +54,38 @@ def owned(conn, table, resource_id, *, lock=False):
     if not row:
         raise missing()
     return row
+
+
+def scan_start(conn, profile_id, notice_version, settings):
+    owned(conn, "profiles", profile_id)
+    # Serialize quota reservations across API workers without holding a lock
+    # during inference. All attempts count, including unavailable/model failures.
+    conn.execute("SELECT pg_advisory_xact_lock(hashtextextended(powershift.current_owner_id()::text,7))")
+    count = conn.execute("""SELECT count(*) AS total,
+        count(*) FILTER (WHERE status='pending' AND expires_at>clock_timestamp()) AS pending
+        FROM powershift.scan_sessions WHERE owner_id=powershift.current_owner_id()
+        AND created_at>clock_timestamp()-interval '24 hours'""").fetchone()
+    if count["total"] >= settings.daily_limit or count["pending"]:
+        raise APIError(429, "RATE_LIMITED", "The scan limit has been reached. Enter values manually or retry later.")
+    return conn.execute("""INSERT INTO powershift.scan_sessions
+        (profile_id,status,consent_notice_version,consented_at,expires_at)
+        VALUES (%s,'pending',%s,clock_timestamp(),clock_timestamp()+(%s*interval '1 second'))
+        RETURNING id""", (profile_id, notice_version, settings.expiry_seconds)).fetchone()["id"]
+
+
+def scan_finish(conn, resource_id, *, candidate=None, error_code=None):
+    row = owned(conn, "scan_sessions", resource_id, lock=True)
+    if row["status"] != "pending":
+        raise conflict("SCAN_ALREADY_CONFIRMED")
+    row = conn.execute("""UPDATE powershift.scan_sessions SET status=%s,candidate=%s,error_code=%s
+        WHERE owner_id=powershift.current_owner_id() AND id=%s RETURNING *""",
+        ("failed" if error_code else "candidate", Jsonb(candidate, dumps=dumps_assessment) if candidate else None,
+         error_code, resource_id)).fetchone()
+    if error_code:
+        return None
+    return {"scan_id": str(row["id"]), "profile_id": str(row["profile_id"]),
+            "expires_at": wire(row["expires_at"]), "result": wire(row["candidate"]),
+            "requiresConfirmation": True}
 
 
 def replay(conn, operation, profile, data, table, render):

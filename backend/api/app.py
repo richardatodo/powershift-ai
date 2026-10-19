@@ -21,6 +21,8 @@ from .database import Database
 from .errors import APIError, invalid, missing
 from . import service
 from .validation import CONTRACT, parse_json, validate, uuid_text
+from .scanning import ImageLimits, image_error, validated_image
+from .vision import NOTICE, NOTICE_VERSION, OllamaAdapter, unavailable
 
 LOGGER = logging.getLogger("powershift.api")
 
@@ -51,6 +53,8 @@ class RequestBoundary:
         request_id = str(uuid4())
         scope.setdefault("state", {})["request_id"] = request_id
         started, count = False, 0
+        body_limit = (4 * ((self.settings.scan.max_image_bytes + 2) // 3) + 4096
+                      if scope.get("path") == "/api/scan" else self.settings.max_body_bytes)
 
         async def safe_send(message):
             nonlocal started
@@ -68,7 +72,7 @@ class RequestBoundary:
             message = await receive()
             if message["type"] == "http.request":
                 count += len(message.get("body", b""))
-                if count > self.settings.max_body_bytes:
+                if count > body_limit:
                     raise APIError(413, "REQUEST_TOO_LARGE", "The request exceeds the size limit.")
             return message
 
@@ -88,7 +92,7 @@ class RequestBoundary:
             lengths = [v for k, v in scope["headers"] if k.lower() == b"content-length"]
             if len(lengths) > 1 or lengths and (not lengths[0].isdigit()):
                 raise APIError(400, "MALFORMED_JSON", "A valid request is required.")
-            if lengths and (len(lengths[0]) > 10 or int(lengths[0]) > self.settings.max_body_bytes):
+            if lengths and (len(lengths[0]) > 10 or int(lengths[0]) > body_limit):
                 raise APIError(413, "REQUEST_TOO_LARGE", "The request exceeds the size limit.")
             await self.app(scope, bounded_receive, safe_send)
         except Exception as error:
@@ -101,10 +105,12 @@ class RequestBoundary:
             await failure(error, request_id)(scope, receive, safe_send)
 
 
-def create_app(settings=None, *, database=None, verifier=None):
+def create_app(settings=None, *, database=None, verifier=None, scanner=None):
     settings = settings or Settings.from_env()
     database = database or Database(settings)
     verifier = verifier or TokenVerifier(settings)
+    scanner = scanner or (OllamaAdapter(settings.scan) if settings.scan.provider == "ollama" else None)
+    scan_slot = threading.BoundedSemaphore(1)
 
     @asynccontextmanager
     async def lifespan(_):
@@ -116,6 +122,8 @@ def create_app(settings=None, *, database=None, verifier=None):
         finally:
             database.close()
             verifier.close()
+            if scanner:
+                scanner.close()
 
     app = FastAPI(title="PowerShift AI", version="0.1.0", lifespan=lifespan,
                   docs_url=None, redoc_url=None, openapi_url=None, debug=False)
@@ -179,7 +187,12 @@ def create_app(settings=None, *, database=None, verifier=None):
 
     @app.get("/api/status")
     def status():
-        return response({"imageScanningConfigured": False})
+        result = {"imageScanningConfigured": settings.scan.provider == "ollama"}
+        if result["imageScanningConfigured"]:
+            result["scanNotice"] = {"version": NOTICE_VERSION, "text": NOTICE,
+                "maxImageBytes": settings.scan.max_image_bytes,
+                "timeoutSeconds": settings.scan.timeout_seconds}
+        return response(result)
 
     @app.post("/api/profiles")
     def create_profile(request: Request, identity: Principal = Depends(principal), data=Depends(payload)):
@@ -249,11 +262,43 @@ def create_app(settings=None, *, database=None, verifier=None):
         return Response(service.report_csv(saved), media_type="text/csv; charset=utf-8",
                         headers={"Content-Disposition": f'attachment; filename="powershift-{resource}.csv"'})
 
+    def perform_scan(request, identity, data):
+        limits = ImageLimits(settings.scan.max_image_bytes, settings.scan.max_pixels, settings.scan.max_side)
+        image = validated_image(data.pop("imageDataUrl"), limits)
+        receipt = run(request, identity, lambda c: service.scan_start(c, data["profile_id"], NOTICE_VERSION, settings.scan))
+        try:
+            candidate = scanner.extract(image)
+            # Validate even injected/replacement adapters at the service boundary.
+            validate("ScanCandidate", candidate)
+        except Exception as error:
+            if not isinstance(error, APIError) or error.code == "VALIDATION_ERROR":
+                error = APIError(502, "INVALID_SCAN_RESULT", "The label could not be read safely. Enter values manually.")
+            code = error.code if error.code in ("INVALID_SCAN_RESULT", "SCAN_TIMEOUT") else "SCAN_PROVIDER_ERROR"
+            run(request, identity, lambda c: service.scan_finish(c, receipt, error_code=code))
+            raise error from None
+        return response(run(request, identity, lambda c: service.scan_finish(c, receipt, candidate=candidate)))
+
     @app.post("/api/scan")
     def scan(request: Request, identity: Principal = Depends(principal), data=Depends(payload)):
+        if not isinstance(data, dict) or not isinstance(data.get("imageDataUrl"), str):
+            raise image_error()
+        # Map structural image failures separately from profile/consent failures.
+        from jsonschema import Draft202012Validator
+        image_schema = CONTRACT["components"]["schemas"]["ScanRequest"]["properties"]["imageDataUrl"]
+        if not Draft202012Validator(image_schema).is_valid(data["imageDataUrl"]):
+            raise image_error()
         data = checked("ScanRequest", data)
         run(request, identity, lambda c: service.owned(c, "profiles", data["profile_id"]))
-        # No upload/provider side effects until consent/retention/provider gates are approved.
-        raise APIError(503, "SCANNER_UNAVAILABLE", "Image scanning is not configured. Enter values manually.")
+        if settings.scan.provider != "ollama" or scanner is None:
+            raise unavailable()
+        if data["consent"]["notice_version"] != NOTICE_VERSION:
+            raise invalid("/consent/notice_version", "INVALID_PROVENANCE")
+        # Bound pixel decoding as well as inference memory for this API worker.
+        if not scan_slot.acquire(blocking=False):
+            raise APIError(429, "RATE_LIMITED", "The local scanner is busy. Enter values manually or retry later.")
+        try:
+            return perform_scan(request, identity, data)
+        finally:
+            scan_slot.release()
 
     return app

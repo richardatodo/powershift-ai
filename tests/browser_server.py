@@ -24,7 +24,8 @@ import uvicorn
 
 from backend.api.app import create_app
 from backend.api.auth import TokenVerifier
-from backend.api.config import Settings
+from backend.api.config import Settings, ScanSettings
+from backend.api.vision import OllamaAdapter
 
 
 def main():
@@ -64,9 +65,22 @@ def main():
         now = int(time.time())
         token = jwt.encode({'iss': issuer, 'sub': 'browser-owner', 'aud': audience, 'iat': now, 'exp': now + 3600}, key,
                            algorithm='RS256', headers={'kid': 'browser-test-key'})
-        settings = Settings(runtime_url, issuer, audience, issuer + 'jwks', requests_per_minute=10000, pool_size=3)
+        settings = Settings(runtime_url, issuer, audience, issuer + 'jwks', requests_per_minute=10000, pool_size=3,
+                            scan=ScanSettings(provider='ollama'))
         verifier = TokenVerifier(settings, httpx.Client(transport=httpx.MockTransport(lambda _: httpx.Response(200, json={'keys': [public]}))))
-        app = create_app(settings, verifier=verifier)
+        # Browser fixtures exercise real scan orchestration/database/validation,
+        # but deliberately mock local model transport. This is not an accuracy test.
+        def local_model(request):
+            if request.url.path == '/api/show':
+                return httpx.Response(200, json={'capabilities': ['vision']})
+            return httpx.Response(200, json={'done': True, 'message': {'content': json.dumps({
+                'power_status': 'clear_watts', 'candidate': {'name': 'Scanned fan', 'brand': None,
+                    'model': None, 'watts': 60, 'voltage': '230 V', 'current': None,
+                    'kwh_per_day': None, 'notes': 'Review this synthetic test candidate.',
+                    'visible_evidence': 'Input power 60 W'}})}})
+        scanner = OllamaAdapter(settings.scan, httpx.Client(base_url=settings.scan.base_url,
+            transport=httpx.MockTransport(local_model)))
+        app = create_app(settings, verifier=verifier, scanner=scanner)
 
         @app.post('/__test/shutdown')
         def stop(request: Request):

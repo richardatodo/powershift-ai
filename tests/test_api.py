@@ -58,12 +58,12 @@ def headers(signing, subject="owner-a", **changes):
 
 
 @contextmanager
-def client_for(signing, database=None, **settings_overrides):
+def client_for(signing, database=None, scanner=None, **settings_overrides):
     settings = Settings("postgresql://unused", ISSUER, AUDIENCE, ISSUER + "jwks", requests_per_minute=10000)
     settings = replace(settings, **settings_overrides)
     transport = httpx.MockTransport(lambda _: httpx.Response(200, json={"keys": [signing[1]]}))
     verifier = TokenVerifier(settings, httpx.Client(transport=transport))
-    with TestClient(create_app(settings, database=database or NoDatabase(), verifier=verifier)) as client:
+    with TestClient(create_app(settings, database=database or NoDatabase(), verifier=verifier, scanner=scanner)) as client:
         yield client
 
 
@@ -583,3 +583,189 @@ def test_native_profile_list_is_owned_paginated_and_validated(live, signing):
     assert foreign['id'] not in {item['id'] for item in returned}
     for query in ('limit=0', 'limit=101', 'limit=2&limit=3', 'after=invalid', 'owner_id=' + str(uuid4())):
         assert_error(client.get('/api/profiles?' + query, headers=headers(signing, owner)), 422, 'VALIDATION_ERROR')
+
+
+@pytest.mark.parametrize("case", ["clear_watts", "blurry", "missing_label", "va_only", "ambiguous"])
+def test_native_scan_candidate_needs_confirmation_and_preserves_provenance(native_database, signing, case):
+    from backend.api.config import ScanSettings
+    from backend.api.scanning import extraction_result
+    from backend.api.vision import NOTICE_VERSION
+    from test_scanning import extract, image_url
+    class LocalScanner:
+        def extract(self, image): return extraction_result(extract(case))
+        def close(self): pass
+    settings = Settings(native_database[0], ISSUER, AUDIENCE, ISSUER + "jwks")
+    with client_for(signing, database=Database(settings), scanner=LocalScanner(), scan=ScanSettings(provider="ollama")) as client:
+        owner = 'm7-' + uuid4().hex
+        saved, _ = profile(client, signing, owner)
+        body = {"imageDataUrl": image_url(), "profile_id": saved["id"],
+                "consent": {"granted": True, "notice_version": NOTICE_VERSION}}
+        result = client.post('/api/scan', json=body, headers=headers(signing, owner))
+        assert result.status_code == 200, result.text
+        receipt = result.json(); validate('ScanResponse', receipt)
+        assert receipt['requiresConfirmation'] is True
+        assert receipt['result']['watts'] == (60 if case == 'clear_watts' else None)
+        assert client.get('/api/profiles/' + saved['id'], headers=headers(signing, owner)).json()['appliances'] == []
+        create = appliance_body(name='Reviewed fan', rated_watts=receipt['result']['watts'],
+            source_method='ai_label_extraction', scan_id=receipt['scan_id'])
+        path = f'/api/profiles/{saved["id"]}/appliances'
+        assert_error(client.post(path, json={**create, 'confirmation': False}, headers=headers(signing, owner)), 422, 'VALIDATION_ERROR')
+        assert_error(client.post('/api/scan', json=body, headers=headers(signing, 'm7-other')), 404, 'RESOURCE_NOT_FOUND')
+        other_profile, _ = profile(client, signing, 'm7-other')
+        assert_error(client.post(f'/api/profiles/{other_profile["id"]}/appliances', json=create,
+            headers=headers(signing, 'm7-other')), 404, 'RESOURCE_NOT_FOUND')
+        stored = client.post(path, json=create, headers=headers(signing, owner))
+        assert stored.status_code == 201, stored.text
+        assert stored.json()['field_provenance']['name']['origin'] == 'user_correction'
+        assert stored.json()['field_provenance']['rated_watts']['origin'] == 'label_extraction'
+        assert stored.json()['calculation_status'] == ('eligible' if case == 'clear_watts' else 'incomplete')
+        assert client.post(path, json=create, headers=headers(signing, owner)).status_code == 200
+        assert_error(client.post(path, json={**create,'client_request_id':str(uuid4())},
+            headers=headers(signing, owner)), 409, 'SCAN_ALREADY_CONFIRMED')
+
+
+@pytest.mark.parametrize('failure_code,status', [('SCAN_TIMEOUT',504), ('INVALID_SCAN_RESULT',502), ('SCANNER_UNAVAILABLE',503)])
+def test_native_scan_failures_are_durable_and_manual_entry_survives(native_database, signing, failure_code, status):
+    from backend.api.config import ScanSettings
+    from backend.api.vision import NOTICE_VERSION
+    from test_scanning import image_url
+    class FailedScanner:
+        def extract(self, image): raise APIError(status, failure_code, 'Try manual entry.')
+        def close(self): pass
+    settings = Settings(native_database[0], ISSUER, AUDIENCE, ISSUER + 'jwks')
+    with client_for(signing, database=Database(settings), scanner=FailedScanner(),
+                    scan=ScanSettings(provider='ollama',daily_limit=1)) as client:
+        owner = 'm7-failure-' + uuid4().hex
+        saved, _ = profile(client, signing, owner)
+        body = {'imageDataUrl':image_url(),'profile_id':saved['id'],
+                'consent':{'granted':True,'notice_version':NOTICE_VERSION}}
+        assert_error(client.post('/api/scan',json=body,headers=headers(signing,owner)),status,failure_code)
+        assert_error(client.post('/api/scan',json=body,headers=headers(signing,owner)),429,'RATE_LIMITED')
+        created = client.post(f'/api/profiles/{saved["id"]}/appliances',json=appliance_body(),headers=headers(signing,owner))
+        assert created.status_code == 201
+        with psycopg.connect(native_database[1], autocommit=True) as conn:
+            receipt = conn.execute('SELECT status,error_code,candidate FROM powershift.scan_sessions WHERE profile_id=%s', (saved['id'],)).fetchone()
+            assert receipt == ('failed', failure_code if status != 503 else 'SCAN_PROVIDER_ERROR', None)
+
+
+def test_native_scan_input_consent_and_expiry(native_database, signing):
+    from backend.api.config import ScanSettings
+    from backend.api.vision import NOTICE_VERSION
+    from test_scanning import image_url, extract
+    from backend.api.scanning import extraction_result
+    class LocalScanner:
+        def extract(self,image): return extraction_result(extract())
+        def close(self): pass
+    settings = Settings(native_database[0],ISSUER,AUDIENCE,ISSUER+'jwks')
+    with client_for(signing,database=Database(settings),scanner=LocalScanner(),scan=ScanSettings(provider='ollama')) as client:
+        saved,_ = profile(client,signing)
+        body={'imageDataUrl':image_url(),'profile_id':saved['id'],'consent':{'granted':True,'notice_version':NOTICE_VERSION}}
+        for image in (None, 1, 'data:image/png;base64,AAAA'):
+            assert_error(client.post('/api/scan',json={**body,'imageDataUrl':image},headers=headers(signing)),400,'INVALID_IMAGE')
+        assert_error(client.post('/api/scan',json={**body,'consent':{'granted':True,'notice_version':'unknown'}},headers=headers(signing)),422,'VALIDATION_ERROR')
+        assert_error(client.post('/api/scan',json={**body,'consent':{'granted':False,'notice_version':NOTICE_VERSION}},headers=headers(signing)),422,'VALIDATION_ERROR')
+        status=client.get('/api/status'); validate('StatusResponse',status.json())
+        assert status.json()['scanNotice']['version'] == NOTICE_VERSION
+        result=client.post('/api/scan',json=body,headers=headers(signing)); assert result.status_code==200
+        scan_id=result.json()['scan_id']
+        # Advance the expiry predicate with an injected application clock; the DB
+        # trigger separately enforces real clock expiry and forbids mutating it.
+        from unittest.mock import patch
+        from datetime import timedelta, datetime, timezone
+        with patch('backend.api.service.datetime') as clock:
+            clock.now.return_value=datetime.now(timezone.utc)+timedelta(days=2)
+            result=client.post(f'/api/profiles/{saved["id"]}/appliances',json=appliance_body(
+                source_method='ai_label_extraction',scan_id=scan_id),headers=headers(signing))
+        assert_error(result,409,'SCAN_EXPIRED')
+
+
+def test_native_scanning_bounds_memory_and_leaves_manual_requests_available(native_database, signing):
+    import threading
+    from backend.api.config import ScanSettings
+    from backend.api.scanning import extraction_result
+    from backend.api.vision import NOTICE_VERSION
+    from test_scanning import extract, image_url
+    started, release = threading.Event(), threading.Event()
+    class BlockingScanner:
+        def extract(self,image):
+            started.set()
+            if not release.wait(20): raise RuntimeError('Test did not release inference')
+            return extraction_result(extract())
+        def close(self): release.set()
+    settings=Settings(native_database[0],ISSUER,AUDIENCE,ISSUER+'jwks')
+    with client_for(signing,database=Database(settings),scanner=BlockingScanner(),scan=ScanSettings(provider='ollama')) as client:
+        owner='m7-concurrency-'+uuid4().hex
+        saved,_=profile(client,signing,owner)
+        body={'imageDataUrl':image_url(),'profile_id':saved['id'],'consent':{'granted':True,'notice_version':NOTICE_VERSION}}
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            running=executor.submit(client.post,'/api/scan',json=body,headers=headers(signing,owner))
+            try:
+                assert started.wait(10)
+                assert_error(client.post('/api/scan',json=body,headers=headers(signing,owner)),429,'RATE_LIMITED')
+                manual=client.post(f'/api/profiles/{saved["id"]}/appliances',json=appliance_body(),headers=headers(signing,owner))
+                assert manual.status_code==201,manual.text
+            finally: release.set()
+            assert running.result(timeout=10).status_code==200
+
+
+@pytest.mark.parametrize('tariff,cost', [(None,None),(0,'0.00'),(100,'259.00')])
+def test_native_report_csv_matches_hand_checked_period_and_complete_schema(live,signing,tariff,cost):
+    client,_=live
+    saved,_=profile(client,signing)
+    malicious='=Fan, "quoted"\nsecond line'
+    appliance(client,signing,saved['id'],name=malicious,rated_watts=100,hours_per_day=5,effective_load_percent=50)
+    appliance(client,signing,saved['id'],name='Two fans',quantity=2,rated_watts=60,hours_per_day=4,effective_load_percent=25)
+    appliance(client,signing,saved['id'],name='Known zero',hours_per_day=0)
+    appliance(client,signing,saved['id'],name='Missing load',effective_load_percent=None)
+    snapshot=client.get('/api/profiles/'+saved['id'],headers=headers(signing)).json()['appliances']
+    inputs=[{key:row[key] for key in ('id','name','quantity','rated_watts','hours_per_day','effective_load_percent','source_status')} for row in snapshot]
+    dashboard=client.post('/api/calculations',json={'appliances':inputs,'period_days':7,'rate_ngn_per_kwh':tariff},headers=headers(signing)).json()
+    response=client.post('/api/reports',json={'profile_id':saved['id'],'period_days':7,'rate_ngn_per_kwh':tariff,'client_request_id':str(uuid4())},headers=headers(signing))
+    assert response.status_code==201,response.text
+    report=response.json();assert report['calculation']==dashboard
+    assert report['calculation']['totals']=={'daily_kwh':'0.370000','period_kwh':'2.590000','grid_equivalent_cost_ngn':cost}
+    assert report['calculation']['counts']['incomplete']==1
+    result=client.get(f'/api/reports/{report["id"]}/export.csv',headers=headers(signing))
+    assert result.status_code==200 and result.headers['Content-Type'].startswith('text/csv')
+    assert result.headers['Content-Disposition']==f'attachment; filename="powershift-{report["id"]}.csv"'
+    reader=csv.DictReader(io.StringIO(result.text))
+    assert reader.fieldnames=='report_id,estimate,appliance_id,name,quantity,rated_watts,hours_per_day,effective_load_percent,source_method,source_status,calculation_status,daily_kwh,period_days,period_kwh,rate_ngn_per_kwh,tariff_provenance,grid_equivalent_cost_ngn,cost_basis,assumptions,exclusion_codes'.split(',')
+    rows=list(reader);assert len(rows)==4
+    assert next(row for row in rows if row['name'].startswith("'=Fan"))['name']=="'"+malicious
+    unknown=next(row for row in rows if row['name']=='Missing load')
+    assert unknown['effective_load_percent']==unknown['daily_kwh']==unknown['period_kwh']==unknown['grid_equivalent_cost_ngn']==''
+    assert unknown['exclusion_codes']=='MISSING_VALUE'
+    zero=next(row for row in rows if row['name']=='Known zero')
+    assert zero['daily_kwh']=='0.000000' and zero['period_kwh']=='0.000000'
+    for row in rows:
+        assert row['report_id']==report['id'] and row['estimate']=='true' and row['period_days']=='7'
+        assert row['assumptions']=='; '.join(report['calculation']['assumptions'])
+        assert row['cost_basis']==('grid_equivalent' if tariff is not None else '')
+        assert row['tariff_provenance']==('user_input' if tariff is not None else '')
+
+
+def test_native_report_rounding_uses_unrounded_inputs_for_total_and_csv_cost(live,signing):
+    client,_=live;saved,_=profile(client,signing)
+    for index in range(3):
+        appliance(client,signing,saved['id'],name=f'Tiny load {index}',rated_watts=1,hours_per_day=1,effective_load_percent=0.04)
+    result=client.post('/api/reports',json={'profile_id':saved['id'],'period_days':1,'rate_ngn_per_kwh':1000000,'client_request_id':str(uuid4())},headers=headers(signing))
+    assert result.status_code==201,result.text
+    report=result.json()
+    assert report['calculation']['totals']=={'daily_kwh':'0.000001','period_kwh':'0.000001','grid_equivalent_cost_ngn':'1.20'}
+    assert any(warning['code']=='ROUNDING_APPLIED' for warning in report['calculation']['warnings'])
+    rows=list(csv.DictReader(io.StringIO(client.get(f'/api/reports/{report["id"]}/export.csv',headers=headers(signing)).text)))
+    assert len(rows)==3
+    assert all(row['daily_kwh']=='0.000000' and row['period_kwh']=='0.000000' and row['grid_equivalent_cost_ngn']=='0.40' for row in rows)
+
+
+@pytest.mark.parametrize('incomplete', [False,True])
+def test_native_report_empty_and_all_incomplete_exports_have_no_invented_totals(live,signing,incomplete):
+    client,_=live;saved,_=profile(client,signing)
+    if incomplete: appliance(client,signing,saved['id'],rated_watts=None,hours_per_day=None,effective_load_percent=None)
+    response=client.post('/api/reports',json={'profile_id':saved['id'],'period_days':366,'rate_ngn_per_kwh':0,'client_request_id':str(uuid4())},headers=headers(signing))
+    assert response.status_code==201,response.text
+    report=response.json();assert all(value is None for value in report['calculation']['totals'].values())
+    assert report['calculation']['counts']['eligible']==0
+    assert report['calculation']['assumptions']
+    reader=csv.DictReader(io.StringIO(client.get(f'/api/reports/{report["id"]}/export.csv',headers=headers(signing)).text))
+    assert len(reader.fieldnames)==20 and len(list(reader))==(1 if incomplete else 0)

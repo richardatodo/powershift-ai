@@ -51,12 +51,12 @@ export function validateAppliance(value: ApplianceForm, confirmed: boolean): Fie
   if (!confirmed) errors.confirmation = 'Confirm that you reviewed these values, including any unknowns.';
   return errors;
 }
-export function appliancePayload(value: ApplianceForm, confirmed: boolean, original?: Appliance) {
+export function appliancePayload(value: ApplianceForm, confirmed: boolean, original?: Appliance, scanId?: string) {
   const decimal = (input: string) => input.trim() === '' ? null : new LosslessNumber(input.trim());
   return { name: value.name.trim(), quantity: new LosslessNumber(value.quantity.trim()), rated_watts: decimal(value.rated_watts),
     hours_per_day: decimal(value.hours_per_day), effective_load_percent: decimal(value.effective_load_percent),
     brand: value.brand.trim() || null, model: value.model.trim() || null, source_method: value.source_method,
-    source_notes: value.source_notes.trim() || null, scan_id: value.source_method === 'ai_label_extraction' ? original?.scan_id : null,
+    source_notes: value.source_notes.trim() || null, scan_id: value.source_method === 'ai_label_extraction' ? original?.scan_id ?? scanId : null,
     confirmation: confirmed, ...(original ? { version: original.version } : {}) };
 }
 export const suggestions: Record<Sector, string[]> = {
